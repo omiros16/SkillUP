@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 108x108 adaptive icon foreground: three rising bars, the tallest in lavender. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF3A3456" android:pathData="M34,62a3,3 0 0 1 3,-3h4a3,3 0 0 1 3,3v12a3,3 0 0 1 -3,3h-4a3,3 0 0 1 -3,-3z" />
+    <path android:fillColor="#FF5F5784" android:pathData="M49,50a3,3 0 0 1 3,-3h4a3,3 0 0 1 3,3v24a3,3 0 0 1 -3,3h-4a3,3 0 0 1 -3,-3z" />
+    <path android:fillColor="#FFA497D9" android:pathData="M64,34a3,3 0 0 1 3,-3h4a3,3 0 0 1 3,3v40a3,3 0 0 1 -3,3h-4a3,3 0 0 1 -3,-3z" />
+</vector>

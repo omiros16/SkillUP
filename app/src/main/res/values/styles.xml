@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#FF000000</item>
+        <item name="android:colorPrimaryDark">#FF000000</item>
+        <item name="android:colorAccent">#FFA497D9</item>
+        <item name="android:windowBackground">@drawable/bg</item>
+        <item name="android:statusBarColor">#FF000000</item>
+        <item name="android:navigationBarColor">#FF000000</item>
+        <item name="android:colorBackground">#FF16141C</item>
+    </style>
+
+    <style name="DialogTheme" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">#FFA497D9</item>
+        <item name="android:colorBackground">#FF16141C</item>
+        <item name="android:textColorPrimary">#FFEDEBF3</item>
+        <item name="android:textColorSecondary">#FF8C8898</item>
+        <item name="android:buttonBarButtonStyle">@style/DialogButton</item>
+    </style>
+
+    <!-- Greek capitals drop their accents; sentence case avoids «ΆΚΥΡΟ». -->
+    <style name="DialogButton" parent="@android:style/Widget.Material.Button.Borderless.Colored">
+        <item name="android:textAllCaps">false</item>
+    </style>
+</resources>
