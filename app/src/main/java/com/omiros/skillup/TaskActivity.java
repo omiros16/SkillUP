@@ -73,6 +73,11 @@ public class TaskActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        load();
+    }
+
+    /** Reads the tasks again and shows this one; closes the page if it is gone. */
+    private void load() {
         tasks = Store.load(this);
         long id = getIntent().getLongExtra("id", -1);
         task = null;
@@ -104,21 +109,21 @@ public class TaskActivity extends Activity {
             stat(stats, r.barely, "barely", 1);
             stat(stats, r.skips, "skip", 2);
         }
-        body.addView(stats, margins(12, 0));
+        body.addView(stats, topMargin(this, 12));
 
         Engine.Sched s = task.current();
         TextView plan = text(this, 16, TEXT, SEMI);
         plan.setText(task.avoid ? "Αποφυγή, κάθε μέρα" : Ui.schedule(s));
-        body.addView(plan, margins(28, 0));
+        body.addView(plan, topMargin(this, 28));
         TextView rule = text(this, 14, TEXT2, null);
         rule.setText(task.avoid ? avoidRule() : xpRule(s));
         lineHeight(rule, 20);
-        body.addView(rule, margins(6, 0));
+        body.addView(rule, topMargin(this, 6));
         if (!task.minimum.isEmpty()) {
             TextView min = text(this, 14, TEXT2, null);
             min.setText("Ελάχιστο: " + task.minimum);
             lineHeight(min, 20);
-            body.addView(min, margins(4, 0));
+            body.addView(min, topMargin(this, 4));
         }
 
         LinearLayout legend = row(this);
@@ -131,7 +136,7 @@ public class TaskActivity extends Activity {
             legend(legend, SKIP_DOT, false, "skip");
             legend(legend, REST_RING, true, "ξεκούραση");
         }
-        body.addView(legend, margins(20, 0));
+        body.addView(legend, topMargin(this, 20));
 
         for (int y = today.getYear(); y >= task.created().getYear(); y--) {
             boolean current = y == today.getYear();
@@ -235,13 +240,6 @@ public class TaskActivity extends Activity {
         parent.addView(l);
     }
 
-    private LinearLayout.LayoutParams margins(int topDp, int bottomDp) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = dp(this, topDp);
-        lp.bottomMargin = dp(this, bottomDp);
-        return lp;
-    }
-
     private void showMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
         menu.getMenu().add(0, 1, 0, "Επεξεργασία");
@@ -253,7 +251,7 @@ public class TaskActivity extends Activity {
                     TaskEditor.show(TaskActivity.this, tasks, task, new Runnable() {
                         @Override
                         public void run() {
-                            render();
+                            load(); // the sheet may hold the list from before the last onResume
                         }
                     });
                 } else {

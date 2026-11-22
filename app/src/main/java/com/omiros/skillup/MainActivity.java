@@ -81,6 +81,12 @@ public class MainActivity extends Activity {
         out.putBoolean("yesterday", showYesterday);
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        showYesterday = false; // the reminder is about today
+    }
+
     // ---------------------------------------------------------------- layout
 
     private View buildUi() {
@@ -183,6 +189,7 @@ public class MainActivity extends Activity {
 
     private void render() {
         today = LocalDate.now();
+        if (tasks.isEmpty()) showYesterday = false; // otherwise the next new task hides behind "Χθες"
         LocalDate date = showYesterday ? today.minusDays(1) : today;
         String d = date.format(DATE_FMT);
         dateView.setText(Character.toUpperCase(d.charAt(0)) + d.substring(1));
@@ -290,7 +297,8 @@ public class MainActivity extends Activity {
         Engine.Sched s = t.sched(date);
         String meta = t.avoid ? null // the control itself says "Καθαρό, μέχρι τώρα"
                 : s.weekly()
-                ? (date.equals(today) ? r.weekCount + " από " + r.weekRequired + " αυτή την εβδομάδα" : Ui.schedule(s))
+                ? (date.equals(today) && r.weekRequired > 0 // a week that starts on Sunday may ask for nothing
+                        ? r.weekCount + " από " + r.weekRequired + " αυτή την εβδομάδα" : Ui.schedule(s))
                 : s.on(date) ? null : (date.equals(today) ? "Ξεκούραση σήμερα" : "Ήταν μέρα ξεκούρασης");
         addMeta(info, meta);
         addMeta(info, t.minimum.isEmpty() ? null : "Ελάχιστο: " + t.minimum);
@@ -312,9 +320,9 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams xpLp = new LinearLayout.LayoutParams(captionWidth, -2);
         xpLp.leftMargin = dp(this, 12);
         xpRow.addView(xp, xpLp);
-        card.addView(xpRow, topMargin(14));
+        card.addView(xpRow, topMargin(this, 14));
 
-        card.addView(t.avoid ? avoidControl(t, date) : statusControl(t, date, r), topMargin(16));
+        card.addView(t.avoid ? avoidControl(t, date) : statusControl(t, date), topMargin(this, 16));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.bottomMargin = dp(this, 12);
         card.setLayoutParams(lp);
@@ -330,12 +338,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.setMarginStart(-overhang(tv, true));
         parent.addView(tv, lp);
-    }
-
-    private LinearLayout.LayoutParams topMargin(int dpValue) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = dp(this, dpValue);
-        return lp;
     }
 
     private View sectionTitle(String title, boolean afterCards) {
@@ -387,16 +389,16 @@ public class MainActivity extends Activity {
         return box;
     }
 
-    /** (Skip | Ξεκούραση | Όχι σήμερα) / Barely / Done. Tapping the selected one clears it. */
-    private View statusControl(final Engine.Task t, final LocalDate date, Engine.Result r) {
+    /** (Skip | Ξεκούραση | Όχι) / Barely / Done. Tapping the selected one clears it. */
+    private View statusControl(final Engine.Task t, final LocalDate date) {
         Engine.Sched s = t.sched(date);
         final Character m = t.marks.get(date);
         final boolean weekly = s.weekly();
         final boolean scheduled = !weekly && s.on(date);
         boolean autoSkip = scheduled && m == null && date.isBefore(today);
-        boolean counted = m != null && m != Engine.SKIP;
-        // Weekly: once the quota is met, more times earn nothing.
-        boolean earns = scheduled || (weekly && !(date.equals(today) && r.weekCount - (counted ? 1 : 0) >= r.weekRequired));
+        // Weekly: only the week's best marks up to its quota earn XP; Engine works out whether this one would.
+        boolean doneEarns = scheduled || weekly && Engine.earns(t, date, Engine.DONE, today);
+        boolean barelyEarns = scheduled || weekly && Engine.earns(t, date, Engine.BARELY, today);
 
         int sel = m == null ? (scheduled && !autoSkip ? -1 : 2)
                 : m == Engine.DONE ? 0 : m == Engine.BARELY ? 1 : 2;
@@ -405,8 +407,8 @@ public class MainActivity extends Activity {
         LinearLayout segs = new LinearLayout(this);
         segs.setMinimumHeight(dp(this, 56));
         segs.setBaselineAligned(false);
-        // Left to right: Skip (or Ξεκούραση / Όχι σήμερα), Barely, Done.
-        String first = weekly ? "Όχι σήμερα" : scheduled ? "Skip" : "Ξεκούραση";
+        // Left to right: Skip (or Ξεκούραση / Όχι), Barely, Done.
+        String first = weekly ? (date.equals(today) ? "Όχι σήμερα" : "Όχι") : scheduled ? "Skip" : "Ξεκούραση";
         segs.addView(segment(first, scheduled ? "−" + s.doneXp() : null, sel == 2, 0,
                 scheduled ? WINE : REST_SEL, scheduled ? ON_WINE : TEXT, scheduled ? ON_WINE_2 : TEXT2, RIPPLE,
                 new Runnable() {
@@ -416,14 +418,14 @@ public class MainActivity extends Activity {
                         mark(t, date, scheduled && (m == null || m != Engine.SKIP) ? Engine.SKIP : null);
                     }
                 }));
-        segs.addView(segment("Barely", earns ? "+" + s.barelyXp() : null, sel == 1, 1,
+        segs.addView(segment("Barely", barelyEarns ? "+" + s.barelyXp() : null, sel == 1, 1,
                 LAV_CONTAINER, ON_LAV_CONTAINER, ON_LAV_CONTAINER_2, RIPPLE, new Runnable() {
                     @Override
                     public void run() {
                         mark(t, date, m != null && m == Engine.BARELY ? null : Engine.BARELY);
                     }
                 }));
-        segs.addView(segment("Done", earns ? "+" + s.doneXp() : null, sel == 0, 2,
+        segs.addView(segment("Done", doneEarns ? "+" + s.doneXp() : null, sel == 0, 2,
                 LAVENDER, ON_LAVENDER, ON_LAVENDER_2, RIPPLE_ON_LAV, new Runnable() {
                     @Override
                     public void run() {
@@ -436,7 +438,7 @@ public class MainActivity extends Activity {
             note.setText("Μπήκε αυτόματα skip. Αλλάζει μέχρι το τέλος της ημέρας.");
             lineHeight(note, 16);
             note.setPadding(dp(this, 4), 0, 0, 0);
-            box.addView(note, topMargin(8));
+            box.addView(note, topMargin(this, 8));
         }
         return box;
     }
@@ -505,7 +507,7 @@ public class MainActivity extends Activity {
             }
         });
         box.addView(h);
-        box.addView(p, topMargin(8));
+        box.addView(p, topMargin(this, 8));
         LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(-2, dp(this, 52));
         bLp.topMargin = dp(this, 20);
         box.addView(b, bLp);
@@ -521,14 +523,21 @@ public class MainActivity extends Activity {
         TaskEditor.show(this, tasks, null, new Runnable() {
             @Override
             public void run() {
+                tasks = Store.load(MainActivity.this); // the sheet may hold the list from before the last onResume
                 render();
             }
         });
     }
 
     private void mark(Engine.Task t, LocalDate date, Character m) {
+        if (!today.equals(LocalDate.now())) { // the screen stayed on past midnight: show the new day first
+            toast(this, "Ξεκίνησε νέα μέρα");
+            render();
+            return;
+        }
         Engine.Result before = Engine.compute(t, today);
         Character old = m == null ? t.marks.remove(date) : t.marks.put(date, m);
+        if (old == null && m == null) return; // nothing to clear, so nothing to write
         if (!Store.save(this, tasks)) {
             if (old == null) t.marks.remove(date); else t.marks.put(date, old);
             toast(this, "Δεν αποθηκεύτηκε. Έλεγξε τον ελεύθερο χώρο του κινητού.");
@@ -563,7 +572,7 @@ public class MainActivity extends Activity {
                 switch (item.getItemId()) {
                     case 1:
                         if (Store.remindOn(MainActivity.this) && !hasNotificationPermission()) {
-                            requestNotificationPermission();
+                            openNotificationSettings();
                         } else {
                             pickReminderTime();
                         }
@@ -601,7 +610,7 @@ public class MainActivity extends Activity {
                 if (hasNotificationPermission()) {
                     toast(MainActivity.this, String.format(Locale.ROOT, "Υπενθύμιση στις %02d:%02d", h, min));
                 } else {
-                    requestNotificationPermission();
+                    openNotificationSettings();
                 }
             }
         }, at / 60, at % 60, true).show();
@@ -613,6 +622,7 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        tasks = Store.load(this); // if Android recreated the screen, this runs before onResume loads them
         Uri uri = data.getData();
         if (requestCode == REQ_EXPORT) {
             try (OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
@@ -668,21 +678,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        if (requestCode != REQ_NOTIF || grantResults.length == 0) return;
-        if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            Reminder.schedule(this);
-        } else if (Build.VERSION.SDK_INT >= 33
-                && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
-                && Store.askedPermission(this)) {
-            // Android will not ask again: send the user to the app's notification settings.
-            toast(this, "Άνοιξε τις ειδοποιήσεις για το SkillUP");
-            try {
-                startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
-            } catch (ActivityNotFoundException ignored) {
-            }
+    /**
+     * The system dialog is asked once, at first launch; Android may refuse to show it again, so later the
+     * app's notification settings, which always work, turn notifications on. The alarm is set either way.
+     */
+    private void openNotificationSettings() {
+        toast(this, "Άνοιξε τις ειδοποιήσεις για το SkillUP");
+        try {
+            startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+        } catch (ActivityNotFoundException ignored) {
         }
     }
 }

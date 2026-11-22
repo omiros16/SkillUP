@@ -19,6 +19,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Create / edit sheet: name, bare minimum, schedule. A floating bottom sheet with rounded corners. */
@@ -258,6 +259,8 @@ final class TaskEditor {
                 boolean avoid = st[3] == 1, weekly = !avoid && st[2] == 1;
                 int days = avoid ? 0x7F : weekly ? 0 : st[0], times = weekly ? st[1] : 0;
                 Engine.Task t = task;
+                String oldName = null, oldMin = null;
+                List<Engine.Sched> oldScheds = null;
                 if (isNew) {
                     t = new Engine.Task();
                     t.id = System.currentTimeMillis();
@@ -265,12 +268,22 @@ final class TaskEditor {
                     t.scheds.add(new Engine.Sched(today, days, times));
                     tasks.add(t);
                 } else {
+                    oldName = t.name; // kept to undo the change in memory if the file cannot be written
+                    oldMin = t.minimum;
+                    oldScheds = new ArrayList<>(t.scheds);
                     t.setSchedule(today, days, times);
                 }
                 t.name = name.getText().toString().trim();
                 t.minimum = avoid ? "" : min.getText().toString().trim();
                 if (!Store.save(a, tasks)) {
-                    if (isNew) tasks.remove(t); // so a retry does not add it twice
+                    if (isNew) {
+                        tasks.remove(t); // so a retry does not add it twice
+                    } else {
+                        t.name = oldName;
+                        t.minimum = oldMin;
+                        t.scheds.clear();
+                        t.scheds.addAll(oldScheds);
+                    }
                     toast(a, "Δεν αποθηκεύτηκε. Έλεγξε τον ελεύθερο χώρο του κινητού.");
                     return;
                 }

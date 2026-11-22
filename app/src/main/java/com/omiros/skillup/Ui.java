@@ -126,6 +126,13 @@ final class Ui {
         return (int) Math.ceil(1.25f * sp(c, sp));
     }
 
+    /** Full width, wrap height, a top margin in dp. */
+    static LinearLayout.LayoutParams topMargin(Context c, float dpValue) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(c, dpValue);
+        return lp;
+    }
+
     static LinearLayout row(Context c) {
         LinearLayout l = new LinearLayout(c);
         l.setGravity(Gravity.CENTER_VERTICAL);

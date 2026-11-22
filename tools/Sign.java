@@ -7,20 +7,24 @@ import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 
-/** Minimal apksigner replacement: Sign <keystore.p12> <password> <alias> <in.apk> <out.apk> */
+/**
+ * Minimal apksigner replacement: Sign <in.apk> <out.apk>. The key (PKCS12, alias "skillup") is not in the
+ * repository: its path and password come from $SKILLUP_KEYSTORE and $SKILLUP_KEYSTORE_PASS.
+ */
 public class Sign {
     public static void main(String[] a) throws Exception {
+        char[] pass = System.getenv("SKILLUP_KEYSTORE_PASS").toCharArray();
         KeyStore ks = KeyStore.getInstance("PKCS12");
-        try (FileInputStream in = new FileInputStream(a[0])) {
-            ks.load(in, a[1].toCharArray());
+        try (FileInputStream in = new FileInputStream(System.getenv("SKILLUP_KEYSTORE"))) {
+            ks.load(in, pass);
         }
-        PrivateKey key = (PrivateKey) ks.getKey(a[2], a[1].toCharArray());
-        X509Certificate cert = (X509Certificate) ks.getCertificate(a[2]);
+        PrivateKey key = (PrivateKey) ks.getKey("skillup", pass);
+        X509Certificate cert = (X509Certificate) ks.getCertificate("skillup");
         ApkSigner.SignerConfig signer = new ApkSigner.SignerConfig.Builder(
                 "skillup", key, Collections.singletonList(cert)).build();
         new ApkSigner.Builder(Collections.singletonList(signer))
-                .setInputApk(new File(a[3]))
-                .setOutputApk(new File(a[4]))
+                .setInputApk(new File(a[0]))
+                .setOutputApk(new File(a[1]))
                 .setMinSdkVersion(26)
                 .setV1SigningEnabled(false)
                 .setV2SigningEnabled(true)

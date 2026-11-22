@@ -18,7 +18,7 @@ final class Engine {
     /** Grid states, one per day from the task's creation to today. */
     static final byte S_REST = 0, S_OPEN = 1, S_SKIP = 2, S_BARELY = 3, S_DONE = 4;
 
-    /** A perfect week is worth this much in every task, whatever its frequency. */
+    /** A perfect week is worth about this much in every task, whatever its frequency (69-72: each time is rounded). */
     static final int WEEK_XP = 70;
 
     /** Avoid tasks ("no short-form content"): every day; a clean day earns this, a slip costs AVOID_SLIP_XP. */
@@ -94,6 +94,8 @@ final class Engine {
 
         /** A schedule change applies from today on; past days keep the rule they had. */
         void setSchedule(LocalDate today, int days, int times) {
+            // The phone's date can move back (clock, time zone): never put a change before the last one.
+            if (today.isBefore(current().from)) today = current().from;
             Sched next = new Sched(today, days, times);
             if (current().sameRule(next)) return;
             if (!current().from.isBefore(today)) scheds.remove(scheds.size() - 1);
@@ -204,7 +206,8 @@ final class Engine {
         // A week that starts mid-week (new task, schedule change) asks for a share of the quota.
         int span = over ? to - from + 1 : 8 - first.getDayOfWeek().getValue();
         int required = Math.round(s.times * span / 7f);
-        int cap = (int) Math.ceil(s.times * span / 7f); // a partial week can still earn what you do in it
+        // What it can earn counts the days up to Sunday, so a later schedule change never takes back earned XP.
+        int cap = (int) Math.ceil(s.times * (8 - first.getDayOfWeek().getValue()) / 7f);
 
         List<Integer> gains = new ArrayList<>();
         for (int i = from; i <= to; i++) {
@@ -221,7 +224,7 @@ final class Engine {
 
         if (!over) {
             r.weekCount = gains.size();
-            r.weekRequired = cap;
+            r.weekRequired = required;
             return xp;
         }
         int missing = Math.max(0, required - counted);
@@ -238,6 +241,16 @@ final class Engine {
             }
         }
         return xp;
+    }
+
+    /** Would mark m on date earn XP? On weekly tasks only the week's best marks up to its quota do. */
+    static boolean earns(Task t, LocalDate date, char m, LocalDate today) {
+        Character old = t.marks.put(date, m);
+        Result with = compute(t, today);
+        t.marks.remove(date);
+        Result without = compute(t, today);
+        if (old != null) t.marks.put(date, old);
+        return m == DONE ? with.done > without.done : with.barely > without.barely;
     }
 
     /** Still to do today: scheduled and unmarked, or a weekly quota that can no longer wait. */

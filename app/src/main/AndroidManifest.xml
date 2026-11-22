@@ -28,8 +28,9 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- Evening reminder; alarms do not survive reboots, updates or clock changes, so re-arm on those. -->
-        <receiver android:name=".Reminder" android:exported="true">
+        <!-- Evening reminder; alarms do not survive reboots, updates or clock changes, so re-arm on those.
+             Not exported: those broadcasts come from the system and the alarm from the app itself. -->
+        <receiver android:name=".Reminder" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

@@ -96,6 +96,8 @@ final class Store {
                 boolean valid = times > 0 ? times <= 7 : times == 0 && days > 0 && days <= 0x7F;
                 if (!valid) throw new JSONException("bad schedule");
                 Engine.Sched sc = new Engine.Sched(LocalDate.parse(s.getString("from")), days, times);
+                // The app's dates come from the phone clock; a far-past one would make compute() walk millions of days.
+                if (sc.from.getYear() < 2000) throw new JSONException("bad date");
                 if (!t.scheds.isEmpty() && !sc.from.isAfter(t.current().from)) throw new JSONException("unsorted");
                 t.scheds.add(sc);
             }
