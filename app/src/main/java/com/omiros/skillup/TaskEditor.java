@@ -3,24 +3,25 @@ package com.omiros.skillup;
 import static com.omiros.skillup.Ui.*;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.app.Dialog;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.time.LocalDate;
 import java.util.List;
 
-/** Create / edit dialog: name, bare minimum, schedule. */
+/** Create / edit sheet: name, bare minimum, schedule. A floating bottom sheet with rounded corners. */
 final class TaskEditor {
     private TaskEditor() {
     }
@@ -35,93 +36,127 @@ final class TaskEditor {
                 cur != null && cur.weekly() ? cur.times : 3,
                 cur != null && cur.weekly() ? 1 : 0};
 
+        final Dialog dialog = new Dialog(a, R.style.SheetTheme);
+
         LinearLayout form = column(a);
-        int pad = dp(a, 22);
-        form.setPadding(pad, dp(a, 8), pad, 0);
+        form.setPadding(dp(a, 24), dp(a, 24), dp(a, 24), 0);
+        TextView title = text(a, 24, TEXT, SEMI);
+        title.setText(isNew ? "Νέο task" : "Επεξεργασία");
+        form.addView(title);
 
         final EditText name = field(a, form, "Όνομα", "π.χ. Διάβασμα", isNew ? "" : task.name);
         final EditText min = field(a, form, "Ελάχιστο (barely)", "π.χ. 5 λεπτά", isNew ? "" : task.minimum);
 
-        form.addView(label(a, "Πότε"));
+        form.addView(label(a, "Πότε", 20));
         LinearLayout modes = row(a);
-        final TextView byDays = pill(a, "Ορισμένες μέρες");
-        final TextView byTimes = pill(a, "Φορές/εβδομάδα");
-        modes.addView(byDays, new LinearLayout.LayoutParams(0, -2, 1));
-        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(0, -2, 1);
-        gap.leftMargin = dp(a, 8);
+        final TextView byDays = modeToggle(a, "Ορισμένες μέρες");
+        final TextView byTimes = modeToggle(a, "Φορές/εβδομάδα");
+        modes.addView(byDays, new LinearLayout.LayoutParams(0, dp(a, 48), 1));
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(0, dp(a, 48), 1);
+        gap.leftMargin = dp(a, 3);
         modes.addView(byTimes, gap);
         form.addView(modes);
 
+        // Day toggles: 48dp slots carry the click; the visual inside is a squircle (off) or a circle (on).
         final LinearLayout dayRow = row(a);
-        dayRow.setPadding(0, dp(a, 14), 0, 0);
+        final FrameLayout[] slots = new FrameLayout[7];
         final TextView[] dayViews = new TextView[7];
+        int contentWidth = a.getResources().getDisplayMetrics().widthPixels - dp(a, 64);
+        int size = Math.min(dp(a, 44), contentWidth / 7 - dp(a, 4));
         for (int i = 0; i < 7; i++) {
-            TextView d = text(a, 14, TEXT, MEDIUM);
+            FrameLayout slot = new FrameLayout(a);
+            slot.setClickable(true);
+            slot.setContentDescription(DAY_FULL[i]);
+            TextView d = text(a, 15, TEXT2, MED);
             d.setText(DAY_LETTER[i]);
             d.setGravity(Gravity.CENTER);
-            d.setContentDescription(DAY_FULL[i]);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(a, 40), 1);
-            if (i > 0) lp.leftMargin = dp(a, 6);
-            dayRow.addView(d, lp);
+            d.setDuplicateParentStateEnabled(true);
+            d.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            slot.addView(d, new FrameLayout.LayoutParams(size, size, Gravity.CENTER));
+            dayRow.addView(slot, new LinearLayout.LayoutParams(0, dp(a, 48), 1));
+            slots[i] = slot;
             dayViews[i] = d;
         }
-        form.addView(dayRow);
+        LinearLayout.LayoutParams dayLp = new LinearLayout.LayoutParams(-1, dp(a, 48));
+        dayLp.topMargin = dp(a, 16);
+        form.addView(dayRow, dayLp);
 
         final LinearLayout timesRow = row(a);
-        timesRow.setPadding(0, dp(a, 14), 0, 0);
         TextView minus = stepper(a, "−", "Λιγότερες φορές");
-        final TextView count = text(a, 22, TEXT, NUM);
+        final TextView count = text(a, 28, TEXT, XBOLD);
         count.setGravity(Gravity.CENTER);
+        tnum(count);
         TextView plus = stepper(a, "+", "Περισσότερες φορές");
-        TextView per = text(a, 15, DIM, null);
+        TextView per = text(a, 15, TEXT2, null);
         per.setText("φορές την εβδομάδα");
-        per.setPadding(dp(a, 12), 0, 0, 0);
         timesRow.addView(minus);
-        timesRow.addView(count, new LinearLayout.LayoutParams(dp(a, 44), -2));
+        timesRow.addView(count, new LinearLayout.LayoutParams(dp(a, 56), -2));
         timesRow.addView(plus);
-        timesRow.addView(per);
-        form.addView(timesRow);
+        LinearLayout.LayoutParams perLp = new LinearLayout.LayoutParams(-2, -2);
+        perLp.leftMargin = dp(a, 12);
+        timesRow.addView(per, perLp);
+        LinearLayout.LayoutParams timesLp = new LinearLayout.LayoutParams(-1, -2);
+        timesLp.topMargin = dp(a, 16);
+        form.addView(timesRow, timesLp);
 
-        final TextView preview = text(a, 13, DIM, null);
-        preview.setPadding(0, dp(a, 16), 0, dp(a, 4));
-        form.addView(preview);
+        final TextView preview = text(a, 13, LAV_TEXT, MED);
+        preview.setPadding(dp(a, 4), 0, 0, 0);
+        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(-1, -2);
+        previewLp.topMargin = dp(a, 16);
+        form.addView(preview, previewLp);
 
-        final AlertDialog dialog = dialog(a)
-                .setTitle(isNew ? "Νέο task" : "Επεξεργασία")
-                .setView(form)
-                .setPositiveButton(isNew ? "Δημιουργία" : "Αποθήκευση", null)
-                .setNegativeButton("Άκυρο", null)
-                .create();
+        // Buttons stay outside the scroll view, so they remain visible above the keyboard.
+        LinearLayout buttons = row(a);
+        buttons.setPadding(dp(a, 24), dp(a, 24), dp(a, 24), dp(a, 20));
+        TextView cancel = sheetButton(a, "Άκυρο");
+        cancel.setBackground(press(a, CTRL, RIPPLE, 26));
+        cancel.setTextColor(TEXT);
+        final TextView save = sheetButton(a, isNew ? "Δημιουργία" : "Αποθήκευση");
+        buttons.addView(cancel, new LinearLayout.LayoutParams(0, dp(a, 52), 1));
+        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(0, dp(a, 52), 1);
+        saveLp.leftMargin = dp(a, 12);
+        buttons.addView(save, saveLp);
+
+        LinearLayout sheet = column(a);
+        sheet.setBackground(shape(a, SHEET, 28));
+        ScrollView scroll = new ScrollView(a);
+        scroll.addView(form);
+        sheet.addView(scroll, new LinearLayout.LayoutParams(-1, -2, 1));
+        sheet.addView(buttons, new LinearLayout.LayoutParams(-1, -2));
+        FrameLayout root = new FrameLayout(a);
+        root.setPadding(dp(a, 8), 0, dp(a, 8), dp(a, 8));
+        root.addView(sheet, new FrameLayout.LayoutParams(-1, -2));
 
         final Runnable refresh = new Runnable() {
             @Override
             public void run() {
                 boolean weekly = st[2] == 1;
-                stylePill(a, byDays, !weekly);
-                stylePill(a, byTimes, weekly);
+                styleMode(a, byDays, !weekly, true);
+                styleMode(a, byTimes, weekly, false);
                 dayRow.setVisibility(weekly ? View.GONE : View.VISIBLE);
                 timesRow.setVisibility(weekly ? View.VISIBLE : View.GONE);
                 for (int i = 0; i < 7; i++) {
                     boolean on = (st[0] & (1 << i)) != 0;
-                    dayViews[i].setBackground(on ? round(LAVENDER, 0, 0, dp(a, 20)) : round(0, FAINT, dp(a, 1), dp(a, 20)));
-                    dayViews[i].setTextColor(on ? BLACK : DIM);
-                    dayViews[i].setSelected(on);
+                    dayViews[i].setBackground(on ? pressOval(LAVENDER, RIPPLE_ON_LAV) : press(a, CTRL, RIPPLE, 14));
+                    dayViews[i].setTextColor(on ? ON_LAVENDER : TEXT2);
+                    dayViews[i].setTypeface(on ? SEMI : MED);
+                    slots[i].setSelected(on);
                 }
                 count.setText(String.valueOf(st[1]));
-                boolean valid = name.getText().toString().trim().length() > 0 && (weekly || st[0] != 0);
-                preview.setText(weekly || st[0] != 0
+                boolean anyDay = weekly || st[0] != 0;
+                preview.setText(anyDay
                         ? xpRule(new Engine.Sched(LocalDate.now(), st[0], weekly ? st[1] : 0))
                         : "Διάλεξε τουλάχιστον μία μέρα.");
-                Button save = dialog.getButton(DialogInterface.BUTTON_POSITIVE);
-                if (save != null) {
-                    save.setEnabled(valid);
-                    save.setAlpha(valid ? 1f : 0.4f);
-                }
+                preview.setTextColor(anyDay ? LAV_TEXT : WINE_CAPTION);
+                boolean valid = name.getText().toString().trim().length() > 0 && anyDay;
+                save.setEnabled(valid);
+                save.setBackground(valid ? press(a, LAVENDER, RIPPLE_ON_LAV, 26) : shape(a, DISABLED, 26));
+                save.setTextColor(valid ? ON_LAVENDER : ON_DISABLED);
             }
         };
         for (int i = 0; i < 7; i++) {
             final int bit = 1 << i;
-            dayViews[i].setOnClickListener(new View.OnClickListener() {
+            slots[i].setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     st[0] ^= bit;
@@ -129,7 +164,6 @@ final class TaskEditor {
                 }
             });
         }
-
         byDays.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -172,87 +206,107 @@ final class TaskEditor {
                 refresh.run();
             }
         });
-
-        dialog.setOnShowListener(new DialogInterface.OnShowListener() {
+        cancel.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onShow(DialogInterface di) {
-                refresh.run();
-                dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        LocalDate today = LocalDate.now();
-                        boolean weekly = st[2] == 1;
-                        int days = weekly ? 0 : st[0], times = weekly ? st[1] : 0;
-                        Engine.Task t = task;
-                        if (isNew) {
-                            t = new Engine.Task();
-                            t.id = System.currentTimeMillis();
-                            t.scheds.add(new Engine.Sched(today, days, times));
-                            tasks.add(t);
-                        } else {
-                            t.setSchedule(today, days, times);
-                        }
-                        t.name = name.getText().toString().trim();
-                        t.minimum = min.getText().toString().trim();
-                        if (!Store.save(a, tasks)) {
-                            toast(a, "Δεν αποθηκεύτηκε. Έλεγξε τον ελεύθερο χώρο του κινητού.");
-                            return;
-                        }
-                        dialog.dismiss();
-                        onSaved.run();
-                    }
-                });
+            public void onClick(View v) {
+                dialog.dismiss();
             }
         });
-        if (isNew) dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        save.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                LocalDate today = LocalDate.now();
+                boolean weekly = st[2] == 1;
+                int days = weekly ? 0 : st[0], times = weekly ? st[1] : 0;
+                Engine.Task t = task;
+                if (isNew) {
+                    t = new Engine.Task();
+                    t.id = System.currentTimeMillis();
+                    t.scheds.add(new Engine.Sched(today, days, times));
+                    tasks.add(t);
+                } else {
+                    t.setSchedule(today, days, times);
+                }
+                t.name = name.getText().toString().trim();
+                t.minimum = min.getText().toString().trim();
+                if (!Store.save(a, tasks)) {
+                    if (isNew) tasks.remove(t); // so a retry does not add it twice
+                    toast(a, "Δεν αποθηκεύτηκε. Έλεγξε τον ελεύθερο χώρο του κινητού.");
+                    return;
+                }
+                dialog.dismiss();
+                onSaved.run();
+            }
+        });
+
+        refresh.run();
+        dialog.setContentView(root);
+        dialog.setCanceledOnTouchOutside(true);
+        Window w = dialog.getWindow();
+        w.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+        w.setGravity(Gravity.BOTTOM);
+        w.getDecorView().setPadding(0, 0, 0, 0);
+        w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE | (isNew
+                ? WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE : WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN));
         dialog.show();
     }
 
     private static EditText field(Activity a, LinearLayout form, String title, String hint, String value) {
-        form.addView(label(a, title));
-        EditText e = new EditText(a);
-        e.setTextColor(TEXT);
-        e.setHintTextColor(0xFF5C5868);
+        form.addView(label(a, title, 16));
+        // The 4-arg constructor applies the filled style; the Activity context does not carry the sheet's theme.
+        EditText e = new EditText(a, null, 0, R.style.SheetField);
+        e.setTypeface(REG);
         e.setHint(hint);
         e.setText(value);
         e.setSingleLine(true);
         e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(40)});
         e.setSelection(e.getText().length());
-        form.addView(e);
+        form.addView(e, new LinearLayout.LayoutParams(-1, dp(a, 56)));
         return e;
     }
 
-    private static TextView label(Activity a, String s) {
-        TextView tv = text(a, 13, DIM, null);
+    private static TextView label(Activity a, String s, int topDp) {
+        TextView tv = text(a, 13, TEXT2, MED);
         tv.setText(s);
-        tv.setPadding(0, dp(a, 14), 0, dp(a, 2));
+        tv.setPadding(dp(a, 4), dp(a, topDp), 0, dp(a, 8));
         return tv;
     }
 
-    private static TextView pill(Activity a, String s) {
-        TextView tv = text(a, 14, TEXT, MEDIUM);
+    private static TextView modeToggle(Activity a, String s) {
+        TextView tv = text(a, 14, TEXT2, MED);
         tv.setText(s);
         tv.setGravity(Gravity.CENTER);
-        tv.setSingleLine(true); // before setMinHeight: it resets the height limits
-        tv.setMinHeight(dp(a, 40));
-        tv.setPadding(dp(a, 8), 0, dp(a, 8), 0);
+        tv.setPadding(dp(a, 12), 0, dp(a, 12), 0);
+        autosize(tv, 11, 14);
         return tv;
     }
 
-    private static void stylePill(Activity a, TextView tv, boolean on) {
-        tv.setBackground(ripple(on ? BARELY_BG : 0, on ? LAVENDER : FAINT, dp(a, 20)));
-        tv.setTextColor(on ? TEXT : DIM);
+    /** Connected pair; the selected half becomes a full pill and heavier. */
+    private static void styleMode(Activity a, TextView tv, boolean on, boolean first) {
+        float[] corners = on ? new float[]{24} : first ? new float[]{24, 8, 8, 24} : new float[]{8, 24, 24, 8};
+        tv.setBackground(press(a, on ? LAV_CONTAINER : CTRL, RIPPLE, corners));
+        tv.setPadding(dp(a, 12), 0, dp(a, 12), 0);
+        tv.setTextColor(on ? ON_LAV_CONTAINER : TEXT2);
+        tv.setTypeface(on ? SEMI : MED);
         tv.setSelected(on);
     }
 
     private static TextView stepper(Activity a, String s, String description) {
-        TextView tv = text(a, 22, TEXT, null);
+        TextView tv = text(a, 22, TEXT, MED);
         tv.setText(s);
         tv.setGravity(Gravity.CENTER);
         tv.setContentDescription(description);
-        tv.setBackground(ripple(TRACK, 0, dp(a, 22)));
-        tv.setLayoutParams(new LinearLayout.LayoutParams(dp(a, 44), dp(a, 44)));
+        tv.setBackground(pressOval(CTRL, RIPPLE));
+        tv.setLayoutParams(new LinearLayout.LayoutParams(dp(a, 48), dp(a, 48)));
+        return tv;
+    }
+
+    private static TextView sheetButton(Activity a, String s) {
+        TextView tv = text(a, 15, TEXT, SEMI);
+        tv.setText(s);
+        tv.setGravity(Gravity.CENTER);
+        tv.setSingleLine(true);
         return tv;
     }
 }

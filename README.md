@@ -62,3 +62,6 @@ android-all (Robolectric), dx και apksig. Χρειάζεται JDK 17+, pytho
 να εγκαθίστανται πάνω στην παλιά χωρίς να χαθούν τα δεδομένα. Για νέα έκδοση ανέβασε το `VERSION_CODE` στο `build.sh`.
 
 Οι κανόνες (XP, levels, σερί, εβδομαδιαία εκκαθάριση) βρίσκονται όλοι στο `Engine.java`, σε καθαρή Java χωρίς Android.
+
+Γραμματοσειρά: [Geologica](https://github.com/monokromskriftforlag/geologisk) (SIL Open Font License 1.1, κείμενο στο
+`app/src/main/res/raw/ofl_geologica.txt`), σε στατικά βάρη 400/500/600/800 με τον άξονα «sharpness» στο 0, μόνο λατινικά και ελληνικά.

@@ -6,19 +6,26 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.View;
-import android.view.animation.DecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 
-/** Rounded lavender progress bar; animates when XP changes (the system "remove animations" setting skips it). */
+/**
+ * Lavender progress bar: fill, a small gap, the remaining track and a stop dot at its end.
+ * Animates when XP changes; the system "remove animations" setting jumps straight to the end.
+ */
 final class XpBar extends View {
     private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
+    private final float gap, stopRadius;
     private float fraction;
 
-    XpBar(Context c) {
+    /** {@code onPlate}: the larger bar on the task page's level plate. */
+    XpBar(Context c, boolean onPlate) {
         super(c);
-        track.setColor(Ui.TRACK);
+        track.setColor(onPlate ? Ui.TRACK_PLATE : Ui.TRACK);
         fill.setColor(Ui.LAVENDER);
+        gap = Ui.dp(c, onPlate ? 4 : 3);
+        stopRadius = Ui.dp(c, 2);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
     }
 
@@ -30,8 +37,8 @@ final class XpBar extends View {
             return;
         }
         ValueAnimator a = ValueAnimator.ofFloat(from, to);
-        a.setDuration(500);
-        a.setInterpolator(new DecelerateInterpolator());
+        a.setDuration(600);
+        a.setInterpolator(new PathInterpolator(0.05f, 0.7f, 0.1f, 1f));
         a.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator va) {
@@ -44,11 +51,19 @@ final class XpBar extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        float h = getHeight(), r = h / 2;
-        rect.set(0, 0, getWidth(), h);
-        canvas.drawRoundRect(rect, r, r, track);
-        if (fraction <= 0) return;
-        rect.right = Math.max(h, getWidth() * Math.min(1, fraction));
-        canvas.drawRoundRect(rect, r, r, fill);
+        float w = getWidth(), h = getHeight(), r = h / 2;
+        float f = Math.max(0, Math.min(1, fraction));
+        float trackStart = 0;
+        if (f > 0) {
+            float end = Math.max(h, w * f);
+            rect.set(0, 0, end, h);
+            canvas.drawRoundRect(rect, r, r, fill);
+            trackStart = end + gap;
+        }
+        if (w - trackStart >= h) {
+            rect.set(trackStart, 0, w, h);
+            canvas.drawRoundRect(rect, r, r, track);
+            canvas.drawCircle(w - r, r, stopRadius, fill);
+        }
     }
 }

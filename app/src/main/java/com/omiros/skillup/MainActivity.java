@@ -9,6 +9,7 @@ import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -31,6 +32,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -56,6 +58,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Ui.init(this);
         showYesterday = state != null && state.getBoolean("yesterday");
         setContentView(buildUi());
         if (state == null && Store.remindOn(this) && !hasNotificationPermission() && !Store.askedPermission(this)) {
@@ -82,19 +85,24 @@ public class MainActivity extends Activity {
 
     private View buildUi() {
         LinearLayout root = column(this);
-        root.setBackgroundColor(BLACK);
+        root.setBackgroundColor(BG);
 
         LinearLayout header = row(this);
-        header.setPadding(dp(this, 20), dp(this, 14), dp(this, 6), 0);
+        header.setPadding(dp(this, 16), dp(this, 16), dp(this, 4), 0);
         LinearLayout titles = column(this);
-        TextView title = text(this, 30, TEXT, NUM);
+        TextView title = text(this, 28, TEXT, XBOLD);
         title.setText("SkillUP");
-        dateView = text(this, 14, DIM, null);
+        title.setLetterSpacing(-0.01f);
+        title.setSingleLine(true);
+        dateView = text(this, 14, TEXT2, null);
         titles.addView(title);
-        titles.addView(dateView);
+        LinearLayout.LayoutParams dateLp = new LinearLayout.LayoutParams(-2, -2);
+        dateLp.topMargin = dp(this, 2);
+        titles.addView(dateView, dateLp);
         header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
 
         ImageView add = iconButton(this, R.drawable.ic_add, "Νέο task");
+        add.setBackground(inset(this, pressOval(CTRL, RIPPLE), 4, 4)); // 40dp tonal circle in a 48dp target
         add.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -113,33 +121,36 @@ public class MainActivity extends Activity {
         root.addView(header);
 
         LinearLayout days = dayBar = row(this);
-        days.setPadding(dp(this, 20), dp(this, 14), dp(this, 20), dp(this, 6));
-        todayChip = chip("Σήμερα", false);
-        yesterdayChip = chip("Χθες", true);
-        days.addView(todayChip);
-        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(-2, -2);
-        gap.leftMargin = dp(this, 8);
+        days.setPadding(dp(this, 16), dp(this, 12), dp(this, 16), dp(this, 12));
+        todayChip = dayToggle("Σήμερα", false);
+        yesterdayChip = dayToggle("Χθες", true);
+        days.addView(todayChip, new LinearLayout.LayoutParams(-2, dp(this, 48)));
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(-2, dp(this, 48));
+        gap.leftMargin = dp(this, 3);
         days.addView(yesterdayChip, gap);
-        summary = text(this, 14, DIM, null);
-        summary.setGravity(Gravity.END);
-        days.addView(summary, new LinearLayout.LayoutParams(0, -2, 1));
+        summary = text(this, 14, TEXT2, MED);
+        summary.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        summary.setMaxLines(2);
+        LinearLayout.LayoutParams sumLp = new LinearLayout.LayoutParams(0, -2, 1);
+        sumLp.leftMargin = dp(this, 12);
+        days.addView(summary, sumLp);
         root.addView(days);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setClipToPadding(false);
         list = column(this);
-        list.setPadding(dp(this, 20), 0, dp(this, 20), dp(this, 40));
+        list.setPadding(dp(this, 16), dp(this, 4), dp(this, 16), dp(this, 32));
         scroll.addView(list);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         return root;
     }
 
-    private TextView chip(String label, final boolean yesterday) {
-        TextView c = text(this, 14, TEXT, MEDIUM);
+    private TextView dayToggle(String label, final boolean yesterday) {
+        TextView c = text(this, 14, TEXT2, SEMI);
         c.setText(label);
-        c.setGravity(Gravity.CENTER);
-        c.setMinHeight(dp(this, 36));
-        c.setPadding(dp(this, 16), 0, dp(this, 16), 0);
+        c.setSingleLine(true);
+        c.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        c.setMinWidth(dp(this, 104));
         c.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -150,17 +161,33 @@ public class MainActivity extends Activity {
         return c;
     }
 
+    /** Connected pair: tight inner corners; the selected one becomes a full pill with a check. */
+    private void styleToggle(TextView c, boolean on, boolean first) {
+        float[] corners = on ? new float[]{20} : first ? new float[]{20, 8, 8, 20} : new float[]{8, 20, 20, 8};
+        c.setBackground(inset(this, press(this, on ? LAV_CONTAINER : CTRL, RIPPLE, corners), 0, 4));
+        c.setTextColor(on ? ON_LAV_CONTAINER : TEXT2);
+        Drawable check = null;
+        if (on) {
+            check = getDrawable(R.drawable.ic_check).mutate();
+            check.setTint(ON_LAV_CONTAINER);
+            check.setBounds(0, 0, dp(this, 18), dp(this, 18));
+        }
+        c.setCompoundDrawablesRelative(check, null, null, null);
+        c.setCompoundDrawablePadding(dp(this, 6));
+        // Centre the content without the width jumping between states (padding after setBackground: insets reset it).
+        float content = c.getPaint().measureText(c.getText().toString()) + (on ? dp(this, 24) : 0);
+        int pad = Math.max(dp(this, 14), Math.round((dp(this, 104) - content) / 2));
+        c.setPaddingRelative(pad, dp(this, 4), pad, dp(this, 4));
+        c.setSelected(on);
+    }
+
     private void render() {
         today = LocalDate.now();
         LocalDate date = showYesterday ? today.minusDays(1) : today;
         String d = date.format(DATE_FMT);
         dateView.setText(Character.toUpperCase(d.charAt(0)) + d.substring(1));
-        for (TextView c : new TextView[]{todayChip, yesterdayChip}) {
-            boolean on = (c == yesterdayChip) == showYesterday;
-            c.setBackground(ripple(on ? BARELY_BG : 0, on ? LAVENDER : FAINT, dp(this, 18)));
-            c.setTextColor(on ? TEXT : DIM);
-            c.setSelected(on);
-        }
+        styleToggle(todayChip, !showYesterday, true);
+        styleToggle(yesterdayChip, showYesterday, false);
 
         list.removeAllViews();
         dayBar.setVisibility(tasks.isEmpty() ? View.GONE : View.VISIBLE);
@@ -169,58 +196,81 @@ public class MainActivity extends Activity {
             return;
         }
 
-        int due = 0, shown = 0;
+        List<Engine.Task> shown = new ArrayList<>();
+        List<Engine.Result> results = new ArrayList<>();
+        int due = 0;
+        float captionWidth = 0;
         for (Engine.Task t : tasks) {
-            if (t.created().isAfter(date)) continue;
             Engine.Result r = Engine.compute(t, today);
             if (Engine.due(t, r, today)) due++;
-            if (shown++ > 0) list.addView(divider());
-            list.addView(taskRow(t, date, r));
+            if (t.created().isAfter(date)) continue;
+            shown.add(t);
+            results.add(r);
+            captionWidth = Math.max(captionWidth, measure(this, MED, 12, true, xpCaption(r)));
         }
-        if (shown == 0) {
-            TextView none = text(this, 15, DIM, null);
+        // One caption width for every card, so all XP bars end at the same x.
+        int capW = (int) Math.ceil(captionWidth) + dp(this, 2); // slack against layout rounding; text is end-aligned
+        for (int i = 0; i < shown.size(); i++) list.addView(taskCard(shown.get(i), date, results.get(i), capW));
+        if (shown.isEmpty()) {
+            TextView none = text(this, 15, TEXT2, null);
             none.setText("Χθες δεν είχες ακόμα tasks.");
-            none.setPadding(0, dp(this, 32), 0, 0);
+            none.setPadding(dp(this, 4), dp(this, 32), 0, 0);
             list.addView(none);
         }
         summary.setText(showYesterday ? "" : due == 1 ? "Μένει 1" : due > 1 ? "Μένουν " + due : "Τελείωσες για σήμερα");
+        summary.setTextColor(due == 0 ? LAV_TEXT : TEXT2);
     }
 
-    private View taskRow(final Engine.Task t, LocalDate date, Engine.Result r) {
-        LinearLayout row = row(this);
-        row.setGravity(Gravity.TOP);
-        row.setPadding(0, dp(this, 18), 0, dp(this, 18));
-        row.setBackground(ripple(0, 0, dp(this, 12)));
-        row.setOnClickListener(new View.OnClickListener() {
+    private static String xpCaption(Engine.Result r) {
+        return r.into + "/" + r.need + " XP";
+    }
+
+    private View taskCard(final Engine.Task t, LocalDate date, Engine.Result r, int captionWidth) {
+        LinearLayout card = column(this);
+        card.setBackground(press(this, CARD, RIPPLE, 28));
+        card.setPadding(dp(this, 16), dp(this, 20), dp(this, 16), dp(this, 16));
+        card.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, TaskActivity.class).putExtra("id", t.id));
             }
         });
 
+        LinearLayout head = row(this);
+        head.setGravity(Gravity.TOP);
+        head.setBaselineAligned(false);
         LinearLayout lv = column(this);
-        TextView lvLabel = text(this, 12, DIM, null);
+        lv.setMinimumWidth(dp(this, 52));
+        TextView lvLabel = text(this, 12, TEXT2, SEMI);
         lvLabel.setText("Lv");
-        TextView lvNum = text(this, 38, TEXT, NUM);
+        lvLabel.setLetterSpacing(0.02f);
+        TextView lvNum = text(this, 40, TEXT, XBOLD);
         lvNum.setText(String.valueOf(r.level));
+        lvNum.setLetterSpacing(-0.02f);
         lvNum.setIncludeFontPadding(false);
+        tnum(lvNum);
         lv.addView(lvLabel);
-        lv.addView(lvNum);
+        LinearLayout.LayoutParams numLp = new LinearLayout.LayoutParams(-2, -2);
+        numLp.topMargin = dp(this, 2);
+        lv.addView(lvNum, numLp);
         lv.setContentDescription("Level " + r.level);
-        row.addView(lv, new LinearLayout.LayoutParams(dp(this, 60), -2));
+        head.addView(lv);
 
         LinearLayout info = column(this);
         LinearLayout nameRow = row(this);
-        TextView name = text(this, 17, TEXT, MEDIUM);
+        TextView name = text(this, 18, TEXT, SEMI);
         name.setText(t.name);
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
         nameRow.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
         if (r.streak > 0) {
-            TextView streak = text(this, 14, DIM, MEDIUM);
+            TextView streak = text(this, 14, TEXT2, SEMI);
             streak.setText("🔥 " + r.streak);
+            tnum(streak);
             streak.setContentDescription("Σερί " + r.streak);
-            nameRow.addView(streak);
+            LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(-2, -2);
+            sLp.leftMargin = dp(this, 8);
+            nameRow.addView(streak, sLp);
         }
         info.addView(nameRow);
 
@@ -228,32 +278,48 @@ public class MainActivity extends Activity {
         String meta = s.weekly()
                 ? (date.equals(today) ? r.weekCount + " από " + r.weekRequired + " αυτή την εβδομάδα" : Ui.schedule(s))
                 : s.on(date) ? null : (date.equals(today) ? "Ξεκούραση σήμερα" : "Ήταν μέρα ξεκούρασης");
-        addSmall(info, meta);
-        addSmall(info, t.minimum.isEmpty() ? null : "Ελάχιστο: " + t.minimum);
+        addMeta(info, meta);
+        addMeta(info, t.minimum.isEmpty() ? null : "Ελάχιστο: " + t.minimum);
+        LinearLayout.LayoutParams infoLp = new LinearLayout.LayoutParams(0, -2, 1);
+        infoLp.leftMargin = dp(this, 12);
+        head.addView(info, infoLp);
+        card.addView(head);
 
-        LinearLayout barRow = row(this);
-        barRow.setPadding(0, dp(this, 10), 0, 0);
-        XpBar bar = new XpBar(this);
+        LinearLayout xpRow = row(this);
+        XpBar bar = new XpBar(this, false);
         Float from = animFrom.remove(t.id);
         bar.set((float) r.into / r.need, from == null ? -1 : from);
-        barRow.addView(bar, new LinearLayout.LayoutParams(0, dp(this, 6), 1));
-        TextView xp = text(this, 12, DIM, null);
-        xp.setText(r.into + "/" + r.need + " XP");
-        xp.setPadding(dp(this, 10), 0, 0, 0);
-        barRow.addView(xp);
-        info.addView(barRow);
+        xpRow.addView(bar, new LinearLayout.LayoutParams(0, dp(this, 8), 1));
+        TextView xp = text(this, 12, TEXT2, MED);
+        xp.setText(xpCaption(r));
+        xp.setGravity(Gravity.END);
+        xp.setSingleLine(true);
+        tnum(xp);
+        LinearLayout.LayoutParams xpLp = new LinearLayout.LayoutParams(captionWidth, -2);
+        xpLp.leftMargin = dp(this, 12);
+        xpRow.addView(xp, xpLp);
+        card.addView(xpRow, topMargin(14));
 
-        info.addView(statusControl(t, date, r));
-        row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
-        return row;
+        card.addView(statusControl(t, date, r), topMargin(16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = dp(this, 12);
+        card.setLayoutParams(lp);
+        return card;
     }
 
-    private void addSmall(LinearLayout parent, String s) {
+    private void addMeta(LinearLayout parent, String s) {
         if (s == null) return;
-        TextView tv = text(this, 13, DIM, null);
+        TextView tv = text(this, 13, TEXT2, null);
         tv.setText(s);
+        lineHeight(tv, 18);
         tv.setPadding(0, dp(this, 2), 0, 0);
         parent.addView(tv);
+    }
+
+    private LinearLayout.LayoutParams topMargin(int dpValue) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(this, dpValue);
+        return lp;
     }
 
     /** Done / Barely / (Skip | Ξεκούραση | Όχι σήμερα). Tapping the selected one clears it. */
@@ -271,54 +337,66 @@ public class MainActivity extends Activity {
                 : m == Engine.DONE ? 0 : m == Engine.BARELY ? 1 : 2;
 
         LinearLayout box = column(this);
-        LinearLayout segs = row(this);
-        segs.setPadding(0, dp(this, 14), 0, 0);
-        segs.addView(segment("Done", earns ? "+" + s.doneXp() : null, sel == 0, LAVENDER, BLACK, new Runnable() {
-            @Override
-            public void run() {
-                mark(t, date, m != null && m == Engine.DONE ? null : Engine.DONE);
-            }
-        }), weight(0));
-        segs.addView(segment("Barely", earns ? "+" + s.barelyXp() : null, sel == 1, BARELY_BG, TEXT, new Runnable() {
-            @Override
-            public void run() {
-                mark(t, date, m != null && m == Engine.BARELY ? null : Engine.BARELY);
-            }
-        }), weight(8));
+        LinearLayout segs = new LinearLayout(this);
+        segs.setMinimumHeight(dp(this, 56));
+        segs.setBaselineAligned(false);
+        segs.addView(segment("Done", earns ? "+" + s.doneXp() : null, sel == 0, 0,
+                LAVENDER, ON_LAVENDER, ON_LAVENDER_2, RIPPLE_ON_LAV, new Runnable() {
+                    @Override
+                    public void run() {
+                        mark(t, date, m != null && m == Engine.DONE ? null : Engine.DONE);
+                    }
+                }));
+        segs.addView(segment("Barely", earns ? "+" + s.barelyXp() : null, sel == 1, 1,
+                LAV_CONTAINER, ON_LAV_CONTAINER, ON_LAV_CONTAINER_2, RIPPLE, new Runnable() {
+                    @Override
+                    public void run() {
+                        mark(t, date, m != null && m == Engine.BARELY ? null : Engine.BARELY);
+                    }
+                }));
         String third = weekly ? "Όχι σήμερα" : scheduled ? "Skip" : "Ξεκούραση";
-        segs.addView(segment(third, scheduled ? "−" + s.doneXp() : null, sel == 2,
-                scheduled ? WINE : REST_BG, scheduled ? WINE_TEXT : 0xFFB8B4C4, new Runnable() {
+        segs.addView(segment(third, scheduled ? "−" + s.doneXp() : null, sel == 2, 2,
+                scheduled ? WINE : REST_SEL, scheduled ? ON_WINE : TEXT, scheduled ? ON_WINE_2 : TEXT2, RIPPLE,
+                new Runnable() {
                     @Override
                     public void run() {
                         // Skip toggles an explicit skip; the other two just clear the day.
                         mark(t, date, scheduled && (m == null || m != Engine.SKIP) ? Engine.SKIP : null);
                     }
-                }), weight(8));
-        box.addView(segs);
-        if (autoSkip) addSmall(box, "Μπήκε αυτόματα skip. Αλλάζει μέχρι το τέλος της ημέρας.");
+                }));
+        box.addView(segs, new LinearLayout.LayoutParams(-1, -2));
+        if (autoSkip) {
+            TextView note = text(this, 12, WINE_CAPTION, null);
+            note.setText("Μπήκε αυτόματα skip. Αλλάζει μέχρι το τέλος της ημέρας.");
+            lineHeight(note, 16);
+            note.setPadding(dp(this, 4), 0, 0, 0);
+            box.addView(note, topMargin(8));
+        }
         return box;
     }
 
-    private LinearLayout.LayoutParams weight(int leftMarginDp) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(this, 52), 1);
-        lp.leftMargin = dp(this, leftMarginDp);
-        return lp;
-    }
-
-    private View segment(String label, String xp, boolean selected, int selBg, int selText, final Runnable action) {
+    /** position 0 / 1 / 2 in a connected group; selected = full pill. */
+    private View segment(String label, String xp, boolean selected, int position,
+                         int selFill, int selText, int selSub, int selRipple, final Runnable action) {
         LinearLayout seg = column(this);
         seg.setGravity(Gravity.CENTER);
-        seg.setBackground(ripple(selected ? selBg : 0, selected ? 0 : FAINT, dp(this, 14)));
+        seg.setPadding(dp(this, 8), dp(this, 6), dp(this, 8), dp(this, 6));
+        float[] corners = selected ? new float[]{28}
+                : position == 0 ? new float[]{28, 8, 8, 28} : position == 2 ? new float[]{8, 28, 28, 8} : new float[]{8};
+        seg.setBackground(press(this, selected ? selFill : CTRL, selected ? selRipple : RIPPLE, corners));
         seg.setSelected(selected);
-        TextView l = text(this, 14, selected ? selText : TEXT, MEDIUM);
+        TextView l = text(this, 14, selected ? selText : TEXT, SEMI);
         l.setText(label);
         l.setGravity(Gravity.CENTER);
-        seg.addView(l);
+        autosize(l, 11, 14);
+        seg.addView(l, new LinearLayout.LayoutParams(-1, lineBox(this, 14)));
         if (xp != null) {
-            TextView x = text(this, 12, selected ? selText : DIM, null);
+            TextView x = text(this, 12, selected ? selSub : TEXT2, MED);
             x.setText(xp + " XP");
             x.setGravity(Gravity.CENTER);
-            seg.addView(x);
+            tnum(x);
+            autosize(x, 10, 12);
+            seg.addView(x, new LinearLayout.LayoutParams(-1, lineBox(this, 12)));
         }
         seg.setContentDescription(label + (xp != null ? ", " + xp + " XP" : ""));
         seg.setOnClickListener(new View.OnClickListener() {
@@ -328,31 +406,32 @@ public class MainActivity extends Activity {
                 action.run();
             }
         });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+        if (position > 0) lp.leftMargin = dp(this, 3);
+        seg.setLayoutParams(lp);
         return seg;
-    }
-
-    private View divider() {
-        View v = new View(this);
-        v.setBackgroundColor(LINE);
-        v.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(this, 1)));
-        return v;
     }
 
     private View emptyState() {
         LinearLayout box = column(this);
-        box.setPadding(0, dp(this, 72), 0, 0);
-        TextView h = text(this, 22, TEXT, MEDIUM);
+        box.setBackground(shape(this, CARD, 28));
+        int pad = dp(this, 24);
+        box.setPadding(pad, pad, pad, pad);
+        TextView h = text(this, 24, TEXT, SEMI);
         h.setText("Ξεκίνα με ένα task");
-        TextView p = text(this, 15, DIM, null);
+        TextView p = text(this, 15, TEXT2, null);
         p.setText("Π.χ. Διάβασμα, με ελάχιστο 5 λεπτά. Κάθε done ή barely σε ανεβάζει, κάθε skip σε ρίχνει.");
-        p.setPadding(0, dp(this, 8), 0, dp(this, 24));
-        p.setLineSpacing(0, 1.2f);
-        TextView b = text(this, 15, BLACK, MEDIUM);
+        lineHeight(p, 22);
+        TextView b = text(this, 15, ON_LAVENDER, SEMI);
         b.setText("Νέο task");
         b.setGravity(Gravity.CENTER);
-        b.setMinHeight(dp(this, 48));
-        b.setPadding(dp(this, 24), 0, dp(this, 24), 0);
-        b.setBackground(ripple(LAVENDER, 0, dp(this, 24)));
+        b.setBackground(press(this, LAVENDER, RIPPLE_ON_LAV, 26));
+        b.setPaddingRelative(dp(this, 20), 0, dp(this, 24), 0);
+        Drawable plus = getDrawable(R.drawable.ic_add).mutate();
+        plus.setTint(ON_LAVENDER);
+        plus.setBounds(0, 0, dp(this, 20), dp(this, 20));
+        b.setCompoundDrawablesRelative(plus, null, null, null);
+        b.setCompoundDrawablePadding(dp(this, 8));
         b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -360,8 +439,13 @@ public class MainActivity extends Activity {
             }
         });
         box.addView(h);
-        box.addView(p);
-        box.addView(b, new LinearLayout.LayoutParams(-2, -2));
+        box.addView(p, topMargin(8));
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(-2, dp(this, 52));
+        bLp.topMargin = dp(this, 20);
+        box.addView(b, bLp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(this, 24);
+        box.setLayoutParams(lp);
         return box;
     }
 
@@ -485,8 +569,7 @@ public class MainActivity extends Activity {
                 toast(this, "Αυτό το αρχείο δεν είναι backup του SkillUP.");
                 return;
             }
-            dialog(this)
-                    .setTitle("Φόρτωση backup;")
+            dialog(this, "Φόρτωση backup;")
                     .setMessage("Τα τωρινά δεδομένα (" + tasks.size() + " tasks) θα αντικατασταθούν από το backup ("
                             + imported.size() + " tasks).")
                     .setPositiveButton("Φόρτωση", new DialogInterface.OnClickListener() {

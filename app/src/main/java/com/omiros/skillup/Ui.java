@@ -3,11 +3,13 @@ package com.omiros.skillup;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.ImageView;
@@ -15,26 +17,53 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Colours, type and the few view helpers both screens share. */
+/** Design tokens ("soft tonal night"), the bundled typeface and the view helpers both screens share. */
 final class Ui {
-    static final int BLACK = 0xFF000000;
-    static final int DIALOG = 0xFF16141C;
-    static final int TRACK = 0xFF1E1C27;
-    static final int LINE = 0xFF19171F;
-    static final int TEXT = 0xFFEDEBF3;
-    static final int DIM = 0xFF8C8898;
-    static final int FAINT = 0xFF2E2B38;
+    // Surfaces: true black, then soft tonal steps. No outlines on resting controls.
+    static final int BG = 0xFF000000;
+    static final int CARD = 0xFF17151E;
+    static final int CTRL = 0xFF272431;
+    static final int SHEET = 0xFF1C1A24;
+    static final int PLATE = 0xFF1C1829;
+    static final int TRACK = 0xFF2C2839;
+    static final int TRACK_PLATE = 0xFF332D48;
+    // Text.
+    static final int TEXT = 0xFFE6E3EE;
+    static final int TEXT2 = 0xFFA29EB0;
+    static final int TEXT3 = 0xFF8C8898;
+    static final int PLATE_TEXT2 = 0xFFB3ABD6;
+    // Lavender family.
     static final int LAVENDER = 0xFFA497D9;
-    static final int LAVENDER_DIM = 0xFF5F5784;
-    static final int BARELY_BG = 0xFF3A3456;
+    static final int ON_LAVENDER = 0xFF1A1530;
+    static final int ON_LAVENDER_2 = 0xFF2E2650;
+    static final int LAV_TEXT = 0xFFC4BAF0;
+    static final int LAV_CONTAINER = 0xFF433B66;
+    static final int ON_LAV_CONTAINER = 0xFFECE9F5;
+    static final int ON_LAV_CONTAINER_2 = 0xFFCFC7F2;
+    // Skip and rest.
     static final int WINE = 0xFF6E2F3C;
-    static final int WINE_TEXT = 0xFFF0B9C3;
-    static final int REST = 0xFF3A3746;
-    static final int REST_BG = 0xFF201E28;
-    static final int EMPTY = 0xFF141319;
+    static final int ON_WINE = 0xFFF6CCD4;
+    static final int ON_WINE_2 = 0xFFEBB3BE;
+    static final int WINE_CAPTION = 0xFFD7A2AE;
+    static final int REST_SEL = 0xFF403B50;
+    // Year grid.
+    static final int BARELY_DOT = 0xFF685E96;
+    static final int SKIP_DOT = 0xFF8E3A4C;
+    static final int REST_RING = 0xFF5A5668;
+    static final int EMPTY_DOT = 0xFF1F1D27;
+    // Misc.
+    static final int DISABLED = 0xFF2B2836;
+    static final int ON_DISABLED = 0xFF77738A;
+    static final int DESTRUCTIVE_TEXT = 0xFFF0A8B6;
+    static final int RIPPLE = 0x1FFFFFFF;
+    static final int RIPPLE_ON_LAV = 0x1F1A1530;
 
-    static final Typeface NUM = Typeface.create("sans-serif-condensed", Typeface.BOLD);
-    static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    /** Geologica 400 / 500 / 600 / 800; system fallbacks until {@link #init} succeeds. */
+    static Typeface REG = Typeface.create("sans-serif", Typeface.NORMAL);
+    static Typeface MED = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    static Typeface SEMI = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    static Typeface XBOLD = Typeface.create("sans-serif", Typeface.BOLD);
+    static boolean fontLoaded;
 
     static final String[] DAY_SHORT = {"Δευ", "Τρί", "Τετ", "Πέμ", "Παρ", "Σάβ", "Κυρ"};
     static final String[] DAY_LETTER = {"Δ", "Τ", "Τ", "Π", "Π", "Σ", "Κ"};
@@ -43,16 +72,57 @@ final class Ui {
     private Ui() {
     }
 
+    static void init(Context c) {
+        if (fontLoaded) return;
+        try {
+            REG = c.getResources().getFont(R.font.geologica_regular);
+            MED = c.getResources().getFont(R.font.geologica_medium);
+            SEMI = c.getResources().getFont(R.font.geologica_semibold);
+            XBOLD = c.getResources().getFont(R.font.geologica_extrabold);
+            fontLoaded = true;
+        } catch (RuntimeException e) {
+            // keep the system fallbacks
+        }
+    }
+
     static int dp(Context c, float v) {
         return Math.round(v * c.getResources().getDisplayMetrics().density);
+    }
+
+    static float sp(Context c, float v) {
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, c.getResources().getDisplayMetrics());
     }
 
     static TextView text(Context c, float sp, int color, Typeface tf) {
         TextView tv = new TextView(c);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         tv.setTextColor(color);
-        if (tf != null) tv.setTypeface(tf);
+        tv.setTypeface(tf != null ? tf : REG);
         return tv;
+    }
+
+    /** Tabular figures, so numbers keep their width as they change. */
+    static void tnum(TextView tv) {
+        tv.setFontFeatureSettings("'tnum'");
+    }
+
+    static void lineHeight(TextView tv, float sp) {
+        int px = Math.round(sp(tv.getContext(), sp));
+        if (Build.VERSION.SDK_INT >= 28) {
+            tv.setLineHeight(px);
+        } else {
+            tv.setLineSpacing(px - tv.getPaint().getFontMetricsInt(null), 1f);
+        }
+    }
+
+    /** Autosize needs an exact box: MATCH_PARENT width and a fixed height of one line. */
+    static void autosize(TextView tv, int minSp, int maxSp) {
+        tv.setMaxLines(1);
+        tv.setAutoSizeTextTypeUniformWithConfiguration(minSp, maxSp, 1, TypedValue.COMPLEX_UNIT_SP);
+    }
+
+    static int lineBox(Context c, float sp) {
+        return (int) Math.ceil(1.25f * sp(c, sp));
     }
 
     static LinearLayout row(Context c) {
@@ -67,34 +137,68 @@ final class Ui {
         return l;
     }
 
+    /** Rounded rectangle; radii in dp, either one value or [TL, TR, BR, BL]. */
+    static GradientDrawable shape(Context c, int fill, float... radii) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        float[] r = new float[8];
+        for (int i = 0; i < 4; i++) {
+            float v = dp(c, radii.length == 1 ? radii[0] : radii[i]);
+            r[2 * i] = v;
+            r[2 * i + 1] = v;
+        }
+        g.setCornerRadii(r);
+        return g;
+    }
+
+    /** Pressable rounded shape; the ripple is masked to the same shape so it never bleeds into gaps. */
+    static Drawable press(Context c, int fill, int ripple, float... radii) {
+        return new RippleDrawable(ColorStateList.valueOf(ripple),
+                fill == 0 ? null : shape(c, fill, radii), shape(c, 0xFFFFFFFF, radii));
+    }
+
+    static GradientDrawable oval(int fill) {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        g.setColor(fill);
+        return g;
+    }
+
+    static Drawable pressOval(int fill, int ripple) {
+        return new RippleDrawable(ColorStateList.valueOf(ripple), fill == 0 ? null : oval(fill), oval(0xFFFFFFFF));
+    }
+
+    /** A smaller visual inside a 48dp touch target. */
+    static Drawable inset(Context c, Drawable d, float horizontalDp, float verticalDp) {
+        int h = dp(c, horizontalDp), v = dp(c, verticalDp);
+        return new InsetDrawable(d, h, v, h, v);
+    }
+
     static ImageView iconButton(Context c, int res, String description) {
         ImageView iv = new ImageView(c);
         iv.setImageResource(res);
         iv.setImageTintList(ColorStateList.valueOf(TEXT));
         iv.setScaleType(ImageView.ScaleType.CENTER);
-        iv.setBackground(ripple(0, 0, dp(c, 22)));
+        iv.setBackground(pressOval(0, RIPPLE));
         iv.setContentDescription(description);
         iv.setLayoutParams(new LinearLayout.LayoutParams(dp(c, 48), dp(c, 48)));
         return iv;
     }
 
-    static GradientDrawable round(int fill, int stroke, int strokeWidth, float radius) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(fill);
-        if (stroke != 0) g.setStroke(strokeWidth, stroke);
-        g.setCornerRadius(radius);
-        return g;
+    static float measure(Context c, Typeface tf, float sp, boolean tabular, String s) {
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setTypeface(tf);
+        p.setTextSize(sp(c, sp));
+        if (tabular) p.setFontFeatureSettings("'tnum'");
+        return p.measureText(s);
     }
 
-    /** Pressable background; fill 0 = transparent, stroke 0 = none. */
-    static Drawable ripple(int fill, int stroke, float radius) {
-        GradientDrawable mask = round(0xFFFFFFFF, 0, 0, radius);
-        Drawable content = fill == 0 && stroke == 0 ? new ColorDrawable(0) : round(fill, stroke, 2, radius);
-        return new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF), content, mask);
-    }
-
-    static AlertDialog.Builder dialog(Context c) {
-        return new AlertDialog.Builder(c, R.style.DialogTheme);
+    static AlertDialog.Builder dialog(Context c, String title) {
+        TextView t = text(c, 20, TEXT, SEMI);
+        t.setText(title);
+        t.setPadding(dp(c, 24), dp(c, 24), dp(c, 24), 0);
+        // A custom title keeps the weight; the theme font would flatten the framework title to 400.
+        return new AlertDialog.Builder(c, R.style.DialogTheme).setCustomTitle(t);
     }
 
     static void toast(Context c, String msg) {
