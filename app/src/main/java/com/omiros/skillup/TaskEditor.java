@@ -30,11 +30,12 @@ final class TaskEditor {
     static void show(final Activity a, final List<Engine.Task> tasks, final Engine.Task task, final Runnable onSaved) {
         final boolean isNew = task == null;
         Engine.Sched cur = isNew ? null : task.current();
-        // [0] days bitmask, [1] times per week, [2] 1 = weekly mode
+        // [0] days bitmask, [1] times per week, [2] 1 = weekly mode, [3] 1 = avoid task (chosen only at creation)
         final int[] st = {
                 cur == null || cur.weekly() ? 0x7F : cur.days,
                 cur != null && cur.weekly() ? cur.times : 3,
-                cur != null && cur.weekly() ? 1 : 0};
+                cur != null && cur.weekly() ? 1 : 0,
+                !isNew && task.avoid ? 1 : 0};
 
         final Dialog dialog = new Dialog(a, R.style.SheetTheme);
 
@@ -44,10 +45,29 @@ final class TaskEditor {
         title.setText(isNew ? "Νέο task" : "Επεξεργασία");
         form.addView(title);
 
-        final EditText name = field(a, form, "Όνομα", "π.χ. Διάβασμα", isNew ? "" : task.name);
-        final EditText min = field(a, form, "Ελάχιστο (barely)", "π.χ. 5 λεπτά", isNew ? "" : task.minimum);
+        // Kind: something to do, or something to avoid. Fixed once created (it changes what past days mean).
+        final TextView toDo = modeToggle(a, "Να κάνω");
+        final TextView toAvoid = modeToggle(a, "Να αποφεύγω");
+        if (isNew) {
+            LinearLayout kinds = row(a);
+            kinds.addView(toDo, new LinearLayout.LayoutParams(0, dp(a, 48), 1));
+            LinearLayout.LayoutParams kGap = new LinearLayout.LayoutParams(0, dp(a, 48), 1);
+            kGap.leftMargin = dp(a, 3);
+            kinds.addView(toAvoid, kGap);
+            LinearLayout.LayoutParams kindsLp = new LinearLayout.LayoutParams(-1, -2);
+            kindsLp.topMargin = dp(a, 16);
+            form.addView(kinds, kindsLp);
+        }
 
-        form.addView(label(a, "Πότε", 20));
+        final EditText name = field(a, form, "Όνομα", "π.χ. Διάβασμα", isNew ? "" : task.name);
+        final LinearLayout minBox = column(a);
+        final EditText min = field(a, minBox, "Ελάχιστο (barely)", "π.χ. 5 λεπτά", isNew ? "" : task.minimum);
+        form.addView(minBox);
+
+        // Schedule (hidden for avoid tasks: they apply every day).
+        final LinearLayout schedBox = column(a);
+        form.addView(schedBox);
+        schedBox.addView(label(a, "Πότε", 20));
         LinearLayout modes = row(a);
         final TextView byDays = modeToggle(a, "Ορισμένες μέρες");
         final TextView byTimes = modeToggle(a, "Φορές/εβδομάδα");
@@ -55,7 +75,7 @@ final class TaskEditor {
         LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(0, dp(a, 48), 1);
         gap.leftMargin = dp(a, 3);
         modes.addView(byTimes, gap);
-        form.addView(modes);
+        schedBox.addView(modes);
 
         // Day toggles: 48dp slots carry the click; the visual inside is a squircle (off) or a circle (on).
         final LinearLayout dayRow = row(a);
@@ -79,7 +99,7 @@ final class TaskEditor {
         }
         LinearLayout.LayoutParams dayLp = new LinearLayout.LayoutParams(-1, dp(a, 48));
         dayLp.topMargin = dp(a, 16);
-        form.addView(dayRow, dayLp);
+        schedBox.addView(dayRow, dayLp);
 
         final LinearLayout timesRow = row(a);
         TextView minus = stepper(a, "−", "Λιγότερες φορές");
@@ -97,7 +117,7 @@ final class TaskEditor {
         timesRow.addView(per, perLp);
         LinearLayout.LayoutParams timesLp = new LinearLayout.LayoutParams(-1, -2);
         timesLp.topMargin = dp(a, 16);
-        form.addView(timesRow, timesLp);
+        schedBox.addView(timesRow, timesLp);
 
         final TextView preview = text(a, 13, LAV_TEXT, MED);
         preview.setPadding(dp(a, 4), 0, 0, 0);
@@ -130,7 +150,12 @@ final class TaskEditor {
         final Runnable refresh = new Runnable() {
             @Override
             public void run() {
-                boolean weekly = st[2] == 1;
+                boolean weekly = st[2] == 1, avoid = st[3] == 1;
+                styleMode(a, toDo, !avoid, true);
+                styleMode(a, toAvoid, avoid, false);
+                minBox.setVisibility(avoid ? View.GONE : View.VISIBLE);
+                schedBox.setVisibility(avoid ? View.GONE : View.VISIBLE);
+                name.setHint(avoid ? "π.χ. Όχι shorts" : "π.χ. Διάβασμα");
                 styleMode(a, byDays, !weekly, true);
                 styleMode(a, byTimes, weekly, false);
                 dayRow.setVisibility(weekly ? View.GONE : View.VISIBLE);
@@ -143,8 +168,8 @@ final class TaskEditor {
                     slots[i].setSelected(on);
                 }
                 count.setText(String.valueOf(st[1]));
-                boolean anyDay = weekly || st[0] != 0;
-                preview.setText(anyDay
+                boolean anyDay = avoid || weekly || st[0] != 0;
+                preview.setText(avoid ? avoidRule() : anyDay
                         ? xpRule(new Engine.Sched(LocalDate.now(), st[0], weekly ? st[1] : 0))
                         : "Διάλεξε τουλάχιστον μία μέρα.");
                 preview.setTextColor(anyDay ? LAV_TEXT : WINE_CAPTION);
@@ -164,6 +189,20 @@ final class TaskEditor {
                 }
             });
         }
+        toDo.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                st[3] = 0;
+                refresh.run();
+            }
+        });
+        toAvoid.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                st[3] = 1;
+                refresh.run();
+            }
+        });
         byDays.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -216,19 +255,20 @@ final class TaskEditor {
             @Override
             public void onClick(View v) {
                 LocalDate today = LocalDate.now();
-                boolean weekly = st[2] == 1;
-                int days = weekly ? 0 : st[0], times = weekly ? st[1] : 0;
+                boolean avoid = st[3] == 1, weekly = !avoid && st[2] == 1;
+                int days = avoid ? 0x7F : weekly ? 0 : st[0], times = weekly ? st[1] : 0;
                 Engine.Task t = task;
                 if (isNew) {
                     t = new Engine.Task();
                     t.id = System.currentTimeMillis();
+                    t.avoid = avoid;
                     t.scheds.add(new Engine.Sched(today, days, times));
                     tasks.add(t);
                 } else {
                     t.setSchedule(today, days, times);
                 }
                 t.name = name.getText().toString().trim();
-                t.minimum = min.getText().toString().trim();
+                t.minimum = avoid ? "" : min.getText().toString().trim();
                 if (!Store.save(a, tasks)) {
                     if (isNew) tasks.remove(t); // so a retry does not add it twice
                     toast(a, "Δεν αποθηκεύτηκε. Έλεγξε τον ελεύθερο χώρο του κινητού.");
@@ -262,6 +302,7 @@ final class TaskEditor {
         e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(40)});
         e.setSelection(e.getText().length());
+        overhang(e, false); // 16dp padding already leaves room; only the clip needs widening
         form.addView(e, new LinearLayout.LayoutParams(-1, dp(a, 56)));
         return e;
     }
@@ -270,6 +311,9 @@ final class TaskEditor {
         TextView tv = text(a, 13, TEXT2, MED);
         tv.setText(s);
         tv.setPadding(dp(a, 4), dp(a, topDp), 0, dp(a, 8));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMarginStart(-overhang(tv, true));
+        tv.setLayoutParams(lp);
         return tv;
     }
 

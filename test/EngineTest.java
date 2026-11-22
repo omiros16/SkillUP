@@ -118,6 +118,37 @@ public class EngineTest {
         t.setSchedule(d(2), EVERY_DAY, 0);
         eq(1, t.scheds.size(), "changing back the same day removes the change");
 
+        // Avoid task: past days are clean (+10) unless marked; today stays open until midnight.
+        t = task(MON, EVERY_DAY, 0);
+        t.avoid = true;
+        r = compute(t, d(3));
+        eq(30, r.xp, "three clean days");
+        eq(2, r.level, "30 xp is Lv2");
+        eq(S_DONE, r.state(d(2)), "ended day is clean");
+        eq(S_OPEN, r.state(d(3)), "today is open");
+        eq(3, r.streak, "clean streak");
+        eq(0, due(t, r, d(3)) ? 1 : 0, "avoid tasks are never due");
+
+        // A slip costs 30 at once (floored at zero) and breaks the streak.
+        t.marks.put(d(1), SKIP);
+        r = compute(t, d(3));
+        eq(10, r.xp, "+10, -30 floors to 0, +10");
+        eq(S_SKIP, r.state(d(1)), "slip shown");
+        eq(1, r.streak, "streak restarts after a slip");
+        eq(1, r.best, "best streak");
+        eq(2, r.done, "clean days");
+        eq(1, r.skips, "slips");
+        t.marks.put(d(3), SKIP);
+        r = compute(t, d(3));
+        eq(0, r.xp, "slip today counts immediately");
+        eq(S_SKIP, r.state(d(3)), "today shows the slip");
+
+        // Any other mark on an avoid task is just a clean day.
+        t = task(MON, EVERY_DAY, 0);
+        t.avoid = true;
+        t.marks.put(d(0), DONE);
+        eq(20, compute(t, d(2)).xp, "non-slip marks are clean");
+
         System.out.println("EngineTest: ok");
     }
 }

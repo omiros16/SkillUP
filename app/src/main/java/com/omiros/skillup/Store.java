@@ -66,6 +66,7 @@ final class Store {
                     .put("id", t.id)
                     .put("name", t.name)
                     .put("min", t.minimum)
+                    .put("avoid", t.avoid)
                     .put("scheds", scheds)
                     .put("marks", marks));
         }
@@ -84,6 +85,7 @@ final class Store {
             t.id = o.getLong("id");
             t.name = o.getString("name").trim();
             t.minimum = o.optString("min", "").trim();
+            t.avoid = o.optBoolean("avoid", false); // backups from 1.0-1.2 have no avoid tasks
             if (t.name.isEmpty()) throw new JSONException("empty name");
 
             JSONArray scheds = o.getJSONArray("scheds");
@@ -103,6 +105,7 @@ final class Store {
                 String key = it.next();
                 String v = marks.getString(key);
                 if (!v.equals("D") && !v.equals("B") && !v.equals("S")) throw new JSONException("bad mark");
+                if (t.avoid && !v.equals("S")) continue; // avoid tasks only record slips
                 t.marks.put(LocalDate.parse(key), v.charAt(0));
             }
             tasks.add(t);

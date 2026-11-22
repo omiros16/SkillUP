@@ -3,6 +3,7 @@ package com.omiros.skillup;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -215,6 +216,23 @@ final class Ui {
             b.append(DAY_SHORT[i]);
         }
         return b.toString();
+    }
+
+    static String avoidRule() {
+        return "Καθαρή μέρα +" + Engine.AVOID_CLEAN_XP + " (μπαίνει τα μεσάνυχτα), το έκανα −" + Engine.AVOID_SLIP_XP;
+    }
+
+    /**
+     * Geologica's accented capitals (Ό, Ή, Έ…) overhang to the left, and TextView clips at its padding, which cuts
+     * the tonos of left-aligned text. A transparent shadow widens TextView's clip; with {@code pad} the text also
+     * moves right by the same amount. Returns those px, for the caller to take off the start margin so the
+     * text stays where it was.
+     */
+    static int overhang(TextView tv, boolean pad) {
+        int o = dp(tv.getContext(), 3);
+        if (pad) tv.setPaddingRelative(tv.getPaddingStart() + o, tv.getPaddingTop(), tv.getPaddingEnd(), tv.getPaddingBottom());
+        tv.setShadowLayer(o, 0, 0, Color.TRANSPARENT);
+        return pad ? o : 0;
     }
 
     static String xpRule(Engine.Sched s) {

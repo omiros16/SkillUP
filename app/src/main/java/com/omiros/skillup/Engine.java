@@ -21,6 +21,9 @@ final class Engine {
     /** A perfect week is worth this much in every task, whatever its frequency. */
     static final int WEEK_XP = 70;
 
+    /** Avoid tasks ("no short-form content"): every day; a clean day earns this, a slip costs AVOID_SLIP_XP. */
+    static final int AVOID_CLEAN_XP = 10, AVOID_SLIP_XP = 30;
+
     /** Schedule from a given day on. Either specific weekdays (days bitmask, Monday = bit 0) or N times a week. */
     static final class Sched {
         final LocalDate from;
@@ -66,6 +69,8 @@ final class Engine {
         long id;
         String name;
         String minimum;
+        /** Something to avoid: days are clean unless marked SKIP ("Το έκανα"). Fixed at creation. */
+        boolean avoid;
         /** Sorted by {@code from}; the first one's date is the day the task was created. */
         final List<Sched> scheds = new ArrayList<>();
         final TreeMap<LocalDate, Character> marks = new TreeMap<>();
@@ -131,6 +136,23 @@ final class Engine {
             LocalDate d = r.start.plusDays(i);
             Sched s = t.sched(d);
             Character m = t.marks.get(d);
+
+            if (t.avoid) {
+                if (m != null && m == SKIP) {
+                    r.states[i] = S_SKIP;
+                    xp = Math.max(0, xp - AVOID_SLIP_XP);
+                    r.skips++;
+                    r.streak = 0;
+                } else if (d.isBefore(today)) {
+                    r.states[i] = S_DONE; // a day that ended without a slip is clean
+                    xp += AVOID_CLEAN_XP;
+                    r.done++;
+                    r.best = Math.max(r.best, ++r.streak);
+                } else {
+                    r.states[i] = S_OPEN; // today: clean so far, counted at midnight
+                }
+                continue;
+            }
 
             if (s.weekly()) {
                 if (bucketStart < 0) bucketStart = i;
@@ -220,7 +242,7 @@ final class Engine {
 
     /** Still to do today: scheduled and unmarked, or a weekly quota that can no longer wait. */
     static boolean due(Task t, Result r, LocalDate today) {
-        if (t.created().isAfter(today) || t.marks.containsKey(today)) return false;
+        if (t.avoid || t.created().isAfter(today) || t.marks.containsKey(today)) return false;
         Sched s = t.sched(today);
         if (!s.weekly()) return s.on(today);
         int left = r.weekRequired - r.weekCount;

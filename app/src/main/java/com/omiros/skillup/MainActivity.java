@@ -210,7 +210,18 @@ public class MainActivity extends Activity {
         }
         // One caption width for every card, so all XP bars end at the same x.
         int capW = (int) Math.ceil(captionWidth) + dp(this, 2); // slack against layout rounding; text is end-aligned
-        for (int i = 0; i < shown.size(); i++) list.addView(taskCard(shown.get(i), date, results.get(i), capW));
+        for (int i = 0; i < shown.size(); i++) {
+            if (!shown.get(i).avoid) list.addView(taskCard(shown.get(i), date, results.get(i), capW));
+        }
+        boolean heading = false;
+        for (int i = 0; i < shown.size(); i++) {
+            if (!shown.get(i).avoid) continue;
+            if (!heading) {
+                heading = true;
+                list.addView(sectionTitle("Αποφεύγω", list.getChildCount() > 0));
+            }
+            list.addView(taskCard(shown.get(i), date, results.get(i), capW));
+        }
         if (shown.isEmpty()) {
             TextView none = text(this, 15, TEXT2, null);
             none.setText("Χθες δεν είχες ακόμα tasks.");
@@ -262,7 +273,9 @@ public class MainActivity extends Activity {
         name.setText(t.name);
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
-        nameRow.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(0, -2, 1);
+        nameLp.setMarginStart(-overhang(name, true));
+        nameRow.addView(name, nameLp);
         if (r.streak > 0) {
             TextView streak = text(this, 14, TEXT2, SEMI);
             streak.setText("🔥 " + r.streak);
@@ -275,7 +288,8 @@ public class MainActivity extends Activity {
         info.addView(nameRow);
 
         Engine.Sched s = t.sched(date);
-        String meta = s.weekly()
+        String meta = t.avoid ? null // the control itself says "Καθαρό, μέχρι τώρα"
+                : s.weekly()
                 ? (date.equals(today) ? r.weekCount + " από " + r.weekRequired + " αυτή την εβδομάδα" : Ui.schedule(s))
                 : s.on(date) ? null : (date.equals(today) ? "Ξεκούραση σήμερα" : "Ήταν μέρα ξεκούρασης");
         addMeta(info, meta);
@@ -300,7 +314,7 @@ public class MainActivity extends Activity {
         xpRow.addView(xp, xpLp);
         card.addView(xpRow, topMargin(14));
 
-        card.addView(statusControl(t, date, r), topMargin(16));
+        card.addView(t.avoid ? avoidControl(t, date) : statusControl(t, date, r), topMargin(16));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.bottomMargin = dp(this, 12);
         card.setLayoutParams(lp);
@@ -313,13 +327,64 @@ public class MainActivity extends Activity {
         tv.setText(s);
         lineHeight(tv, 18);
         tv.setPadding(0, dp(this, 2), 0, 0);
-        parent.addView(tv);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMarginStart(-overhang(tv, true));
+        parent.addView(tv, lp);
     }
 
     private LinearLayout.LayoutParams topMargin(int dpValue) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.topMargin = dp(this, dpValue);
         return lp;
+    }
+
+    private View sectionTitle(String title, boolean afterCards) {
+        TextView h = text(this, 20, TEXT, SEMI);
+        h.setText(title);
+        h.setPadding(dp(this, 4), dp(this, afterCards ? 16 : 4), 0, dp(this, 12));
+        if (Build.VERSION.SDK_INT >= 28) h.setAccessibilityHeading(true);
+        return h;
+    }
+
+    /**
+     * Avoid task: [Το έκανα | Καθαρό]. A day is clean unless "Το έκανα" is marked; today stays
+     * "clean so far" (pending style, no XP yet) until midnight. Tapping "Το έκανα" again undoes it.
+     */
+    private View avoidControl(final Engine.Task t, final LocalDate date) {
+        final boolean slipped = t.marks.containsKey(date) && t.marks.get(date) == Engine.SKIP;
+        boolean ended = date.isBefore(today), pending = !slipped && !ended;
+        LinearLayout segs = new LinearLayout(this);
+        segs.setMinimumHeight(dp(this, 56));
+        segs.setBaselineAligned(false);
+        segs.addView(segment("Το έκανα", "−" + Engine.AVOID_SLIP_XP, slipped, 0,
+                WINE, ON_WINE, ON_WINE_2, RIPPLE, new Runnable() {
+                    @Override
+                    public void run() {
+                        mark(t, date, slipped ? null : Engine.SKIP);
+                    }
+                }));
+        View clean = segment("Καθαρό", ended ? "+" + Engine.AVOID_CLEAN_XP : null, !slipped, 2,
+                pending ? LAV_CONTAINER : LAVENDER, pending ? ON_LAV_CONTAINER : ON_LAVENDER,
+                pending ? ON_LAV_CONTAINER_2 : ON_LAVENDER_2, pending ? RIPPLE : RIPPLE_ON_LAV, new Runnable() {
+                    @Override
+                    public void run() {
+                        if (slipped) mark(t, date, null); // already clean otherwise: nothing to change
+                    }
+                });
+        if (pending) {
+            // Clean so far: the +10 arrives at midnight.
+            TextView sub = text(this, 12, ON_LAV_CONTAINER_2, MED);
+            sub.setText("+" + Engine.AVOID_CLEAN_XP + " τα μεσάνυχτα");
+            tnum(sub);
+            sub.setGravity(Gravity.CENTER);
+            autosize(sub, 10, 12);
+            ((LinearLayout) clean).addView(sub, new LinearLayout.LayoutParams(-1, lineBox(this, 12)));
+            clean.setContentDescription("Καθαρό μέχρι τώρα, +" + Engine.AVOID_CLEAN_XP + " XP τα μεσάνυχτα");
+        }
+        segs.addView(clean);
+        LinearLayout box = column(this);
+        box.addView(segs, new LinearLayout.LayoutParams(-1, -2));
+        return box;
     }
 
     /** (Skip | Ξεκούραση | Όχι σήμερα) / Barely / Done. Tapping the selected one clears it. */

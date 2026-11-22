@@ -48,7 +48,9 @@ public class TaskActivity extends Activity {
         title.setSingleLine(true);
         title.setEllipsize(TextUtils.TruncateAt.END);
         title.setPadding(dp(this, 4), 0, 0, 0);
-        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -2, 1);
+        titleLp.setMarginStart(-overhang(title, true));
+        header.addView(title, titleLp);
         final ImageView more = iconButton(this, R.drawable.ic_more, "Μενού");
         more.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -94,17 +96,22 @@ public class TaskActivity extends Activity {
         stats.setBaselineAligned(false);
         stat(stats, r.streak, "σερί", 0);
         stat(stats, r.best, "καλύτερο", 1);
-        stat(stats, r.done, "done", 1);
-        stat(stats, r.barely, "barely", 1);
-        stat(stats, r.skips, "skip", 2);
+        if (task.avoid) {
+            stat(stats, r.done, "καθαρές", 1);
+            stat(stats, r.skips, "το έκανα", 2);
+        } else {
+            stat(stats, r.done, "done", 1);
+            stat(stats, r.barely, "barely", 1);
+            stat(stats, r.skips, "skip", 2);
+        }
         body.addView(stats, margins(12, 0));
 
         Engine.Sched s = task.current();
         TextView plan = text(this, 16, TEXT, SEMI);
-        plan.setText(Ui.schedule(s));
+        plan.setText(task.avoid ? "Αποφυγή, κάθε μέρα" : Ui.schedule(s));
         body.addView(plan, margins(28, 0));
         TextView rule = text(this, 14, TEXT2, null);
-        rule.setText(xpRule(s));
+        rule.setText(task.avoid ? avoidRule() : xpRule(s));
         lineHeight(rule, 20);
         body.addView(rule, margins(6, 0));
         if (!task.minimum.isEmpty()) {
@@ -115,10 +122,15 @@ public class TaskActivity extends Activity {
         }
 
         LinearLayout legend = row(this);
-        legend(legend, LAVENDER, false, "done");
-        legend(legend, BARELY_DOT, false, "barely");
-        legend(legend, SKIP_DOT, false, "skip");
-        legend(legend, REST_RING, true, "ξεκούραση");
+        if (task.avoid) {
+            legend(legend, LAVENDER, false, "καθαρή");
+            legend(legend, SKIP_DOT, false, "το έκανα");
+        } else {
+            legend(legend, LAVENDER, false, "done");
+            legend(legend, BARELY_DOT, false, "barely");
+            legend(legend, SKIP_DOT, false, "skip");
+            legend(legend, REST_RING, true, "ξεκούραση");
+        }
         body.addView(legend, margins(20, 0));
 
         for (int y = today.getYear(); y >= task.created().getYear(); y--) {
