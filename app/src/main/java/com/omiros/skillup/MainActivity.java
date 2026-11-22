@@ -322,7 +322,7 @@ public class MainActivity extends Activity {
         return lp;
     }
 
-    /** Done / Barely / (Skip | Ξεκούραση | Όχι σήμερα). Tapping the selected one clears it. */
+    /** (Skip | Ξεκούραση | Όχι σήμερα) / Barely / Done. Tapping the selected one clears it. */
     private View statusControl(final Engine.Task t, final LocalDate date, Engine.Result r) {
         Engine.Sched s = t.sched(date);
         final Character m = t.marks.get(date);
@@ -340,11 +340,15 @@ public class MainActivity extends Activity {
         LinearLayout segs = new LinearLayout(this);
         segs.setMinimumHeight(dp(this, 56));
         segs.setBaselineAligned(false);
-        segs.addView(segment("Done", earns ? "+" + s.doneXp() : null, sel == 0, 0,
-                LAVENDER, ON_LAVENDER, ON_LAVENDER_2, RIPPLE_ON_LAV, new Runnable() {
+        // Left to right: Skip (or Ξεκούραση / Όχι σήμερα), Barely, Done.
+        String first = weekly ? "Όχι σήμερα" : scheduled ? "Skip" : "Ξεκούραση";
+        segs.addView(segment(first, scheduled ? "−" + s.doneXp() : null, sel == 2, 0,
+                scheduled ? WINE : REST_SEL, scheduled ? ON_WINE : TEXT, scheduled ? ON_WINE_2 : TEXT2, RIPPLE,
+                new Runnable() {
                     @Override
                     public void run() {
-                        mark(t, date, m != null && m == Engine.DONE ? null : Engine.DONE);
+                        // Skip toggles an explicit skip; the other two just clear the day.
+                        mark(t, date, scheduled && (m == null || m != Engine.SKIP) ? Engine.SKIP : null);
                     }
                 }));
         segs.addView(segment("Barely", earns ? "+" + s.barelyXp() : null, sel == 1, 1,
@@ -354,14 +358,11 @@ public class MainActivity extends Activity {
                         mark(t, date, m != null && m == Engine.BARELY ? null : Engine.BARELY);
                     }
                 }));
-        String third = weekly ? "Όχι σήμερα" : scheduled ? "Skip" : "Ξεκούραση";
-        segs.addView(segment(third, scheduled ? "−" + s.doneXp() : null, sel == 2, 2,
-                scheduled ? WINE : REST_SEL, scheduled ? ON_WINE : TEXT, scheduled ? ON_WINE_2 : TEXT2, RIPPLE,
-                new Runnable() {
+        segs.addView(segment("Done", earns ? "+" + s.doneXp() : null, sel == 0, 2,
+                LAVENDER, ON_LAVENDER, ON_LAVENDER_2, RIPPLE_ON_LAV, new Runnable() {
                     @Override
                     public void run() {
-                        // Skip toggles an explicit skip; the other two just clear the day.
-                        mark(t, date, scheduled && (m == null || m != Engine.SKIP) ? Engine.SKIP : null);
+                        mark(t, date, m != null && m == Engine.DONE ? null : Engine.DONE);
                     }
                 }));
         box.addView(segs, new LinearLayout.LayoutParams(-1, -2));
