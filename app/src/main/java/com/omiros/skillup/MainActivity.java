@@ -3,6 +3,8 @@ package com.omiros.skillup;
 import static com.omiros.skillup.Ui.*;
 
 import android.Manifest;
+import android.animation.ArgbEvaluator;
+import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.TimePickerDialog;
@@ -13,6 +15,7 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
@@ -20,6 +23,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.transition.ChangeBounds;
+import android.transition.Fade;
+import android.transition.TransitionManager;
+import android.transition.TransitionSet;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MenuItem;
@@ -28,6 +35,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.LinearInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
@@ -51,6 +59,7 @@ public class MainActivity extends Activity {
     private static final int REQ_EXPORT = 1, REQ_IMPORT = 2, REQ_NOTIF = 3;
     /** Hold this long for Barely: long enough not to happen by accident, short enough not to feel like waiting. */
     private static final int HOLD_MS = 500;
+    private static final TimeInterpolator EASE = new PathInterpolator(0.2f, 0f, 0f, 1f);
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("EEEE d MMMM", new Locale("el", "GR"));
 
     private List<Engine.Task> tasks;
@@ -61,8 +70,11 @@ public class MainActivity extends Activity {
 
     private TextView dateView;
     private TextView summary;
-    private TextView todayChip;
-    private TextView yesterdayChip;
+    /** One button flips the home between today and yesterday. */
+    private TextView dayButton;
+    private GradientDrawable dayFill;
+    private Drawable daySwap;
+    private int dayButtonWidth;
     private LinearLayout dayBar;
     private LinearLayout list;
 
@@ -139,12 +151,27 @@ public class MainActivity extends Activity {
 
         LinearLayout days = dayBar = row(this);
         days.setPadding(dp(this, 16), dp(this, 12), dp(this, 16), dp(this, 12));
-        todayChip = dayToggle("Σήμερα", false);
-        yesterdayChip = dayToggle("Χθες", true);
-        days.addView(todayChip, new LinearLayout.LayoutParams(-2, dp(this, 48)));
-        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(-2, dp(this, 48));
-        gap.leftMargin = dp(this, 3);
-        days.addView(yesterdayChip, gap);
+        dayButton = text(this, 14, TEXT, SEMI);
+        dayButton.setSingleLine(true);
+        dayButton.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        dayFill = shape(this, CTRL, 20);
+        dayButton.setBackground(inset(this, new RippleDrawable(ColorStateList.valueOf(RIPPLE), dayFill,
+                shape(this, 0xFFFFFFFF, 20)), 0, 4)); // a 40dp pill in a 48dp target
+        daySwap = getDrawable(R.drawable.ic_swap).mutate();
+        daySwap.setBounds(0, 0, dp(this, 18), dp(this, 18));
+        dayButton.setCompoundDrawablesRelative(null, null, daySwap, null);
+        dayButton.setCompoundDrawablePadding(dp(this, 8));
+        // Wide enough for either label, so the button never changes size.
+        float label = Math.max(dayButton.getPaint().measureText("Σήμερα"), dayButton.getPaint().measureText("Χθες"));
+        dayButtonWidth = Math.round(label) + dp(this, 2 * 18 + 8 + 18);
+        dayButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                switchDay();
+            }
+        });
+        days.addView(dayButton, new LinearLayout.LayoutParams(dayButtonWidth, dp(this, 48)));
         summary = text(this, 14, TEXT2, MED);
         summary.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         summary.setMaxLines(2);
@@ -162,40 +189,47 @@ public class MainActivity extends Activity {
         return root;
     }
 
-    private TextView dayToggle(String label, final boolean yesterday) {
-        TextView c = text(this, 14, TEXT2, SEMI);
-        c.setText(label);
-        c.setSingleLine(true);
-        c.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        c.setMinWidth(dp(this, 104));
-        c.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showYesterday = yesterday;
-                render();
-            }
-        });
-        return c;
+    private static final int[] DAY_TODAY = {CTRL, TEXT, TEXT2};
+    private static final int[] DAY_YESTERDAY = {LAV_CONTAINER, ON_LAV_CONTAINER, ON_LAV_CONTAINER_2};
+
+    /** The day button shows the day on screen; on yesterday it takes the lavender tone, as a reminder. */
+    private void styleDay() {
+        String label = showYesterday ? "Χθες" : "Σήμερα";
+        dayButton.setText(label);
+        // Centre label and icon together (padding after setBackground: the inset resets it).
+        int content = Math.round(dayButton.getPaint().measureText(label)) + dp(this, 8 + 18);
+        int pad = (dayButtonWidth - content) / 2;
+        dayButton.setPaddingRelative(pad, 0, pad, 0);
+        paintDay(showYesterday ? DAY_YESTERDAY : DAY_TODAY);
+        dayButton.setContentDescription(showYesterday ? "Χθες. Πάτα για σήμερα" : "Σήμερα. Πάτα για χθες");
     }
 
-    /** Connected pair: tight inner corners; the selected one becomes a full pill with a check. */
-    private void styleToggle(TextView c, boolean on, boolean first) {
-        float[] corners = on ? new float[]{20} : first ? new float[]{20, 8, 8, 20} : new float[]{8, 20, 20, 8};
-        c.setBackground(inset(this, press(this, on ? LAV_CONTAINER : CTRL, RIPPLE, corners), 0, 4));
-        c.setTextColor(on ? ON_LAV_CONTAINER : TEXT2);
-        Drawable check = null;
-        if (on) {
-            check = getDrawable(R.drawable.ic_check).mutate();
-            check.setTint(ON_LAV_CONTAINER);
-            check.setBounds(0, 0, dp(this, 18), dp(this, 18));
-        }
-        c.setCompoundDrawablesRelative(check, null, null, null);
-        c.setCompoundDrawablePadding(dp(this, 6));
-        // Centre the content without the width jumping between states (padding after setBackground: insets reset it).
-        float content = c.getPaint().measureText(c.getText().toString()) + (on ? dp(this, 24) : 0);
-        int pad = Math.max(dp(this, 14), Math.round((dp(this, 104) - content) / 2));
-        c.setPaddingRelative(pad, dp(this, 4), pad, dp(this, 4));
-        c.setSelected(on);
+    private void paintDay(int[] c) {
+        dayFill.setColor(c[0]);
+        dayButton.setTextColor(c[1]);
+        daySwap.setTint(c[2]);
+    }
+
+    /** Flips the day: the button's colours cross-fade and the list slides in from the side of the day it shows. */
+    private void switchDay() {
+        final int[] from = showYesterday ? DAY_YESTERDAY : DAY_TODAY;
+        showYesterday = !showYesterday;
+        render();
+        final int[] to = showYesterday ? DAY_YESTERDAY : DAY_TODAY;
+        final ArgbEvaluator mix = new ArgbEvaluator();
+        ValueAnimator fade = ValueAnimator.ofFloat(0f, 1f).setDuration(220);
+        fade.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator a) {
+                float f = a.getAnimatedFraction();
+                paintDay(new int[]{(Integer) mix.evaluate(f, from[0], to[0]), (Integer) mix.evaluate(f, from[1], to[1]),
+                        (Integer) mix.evaluate(f, from[2], to[2])});
+            }
+        });
+        fade.start();
+        list.setAlpha(0f);
+        list.setTranslationX(dp(this, showYesterday ? -32 : 32)); // yesterday comes in from the left
+        list.animate().alpha(1f).translationX(0f).setDuration(260).setInterpolator(EASE).start();
     }
 
     private void render() {
@@ -204,8 +238,7 @@ public class MainActivity extends Activity {
         LocalDate date = showYesterday ? today.minusDays(1) : today;
         String d = date.format(DATE_FMT);
         dateView.setText(Character.toUpperCase(d.charAt(0)) + d.substring(1));
-        styleToggle(todayChip, !showYesterday, true);
-        styleToggle(yesterdayChip, showYesterday, false);
+        styleDay();
 
         list.removeAllViews();
         dayBar.setVisibility(tasks.isEmpty() ? View.GONE : View.VISIBLE);
@@ -228,8 +261,14 @@ public class MainActivity extends Activity {
         }
         // One caption width for every card, so all XP bars end at the same x.
         int capW = (int) Math.ceil(captionWidth) + dp(this, 2); // slack against layout rounding; text is end-aligned
+        // What is still to do comes first; what is done (or barely) sinks to the bottom, under «Έγιναν».
+        List<View> finished = new ArrayList<>();
         for (int i = 0; i < shown.size(); i++) {
-            if (!shown.get(i).avoid) list.addView(taskCard(shown.get(i), date, results.get(i), capW));
+            Engine.Task t = shown.get(i);
+            if (t.avoid) continue;
+            View card = taskCard(t, date, results.get(i), capW);
+            Character m = t.marks.get(date);
+            if (m != null && (m == Engine.DONE || m == Engine.BARELY)) finished.add(card); else list.addView(card);
         }
         boolean heading = false;
         for (int i = 0; i < shown.size(); i++) {
@@ -240,14 +279,19 @@ public class MainActivity extends Activity {
             }
             list.addView(taskCard(shown.get(i), date, results.get(i), capW));
         }
+        if (!finished.isEmpty()) {
+            list.addView(sectionTitle("Έγιναν", list.getChildCount() > 0));
+            for (View card : finished) list.addView(card);
+        }
         if (shown.isEmpty()) {
             TextView none = text(this, 15, TEXT2, null);
             none.setText("Χθες δεν είχες ακόμα tasks.");
             none.setPadding(dp(this, 4), dp(this, 32), 0, 0);
             list.addView(none);
         }
-        summary.setText(showYesterday ? "" : due == 1 ? "Μένει 1" : due > 1 ? "Μένουν " + due : "Τελείωσες για σήμερα");
-        summary.setTextColor(due == 0 ? LAV_TEXT : TEXT2);
+        summary.setText(showYesterday ? "Αλλάζει ως τα μεσάνυχτα"
+                : due == 1 ? "Μένει 1" : due > 1 ? "Μένουν " + due : "Τελείωσες για σήμερα");
+        summary.setTextColor(due == 0 && !showYesterday ? LAV_TEXT : TEXT2);
     }
 
     private static String xpCaption(Engine.Result r) {
@@ -256,6 +300,7 @@ public class MainActivity extends Activity {
 
     private View taskCard(final Engine.Task t, LocalDate date, Engine.Result r, int captionWidth) {
         LinearLayout card = column(this);
+        card.setTransitionName("task:" + t.id);
         card.setBackground(press(this, CARD, RIPPLE, 28));
         card.setPadding(dp(this, 16), dp(this, 20), dp(this, 16), dp(this, 16));
         card.setOnClickListener(new View.OnClickListener() {
@@ -354,7 +399,9 @@ public class MainActivity extends Activity {
     private View sectionTitle(String title, boolean afterCards) {
         TextView h = text(this, 20, TEXT, SEMI);
         h.setText(title);
+        h.setTransitionName("section:" + title);
         h.setPadding(dp(this, 4), dp(this, afterCards ? 16 : 4), 0, dp(this, 12));
+        overhang(h, false); // «Έγιναν»: room for the tonos inside the 4dp padding
         if (Build.VERSION.SDK_INT >= 28) h.setAccessibilityHeading(true);
         return h;
     }
@@ -628,6 +675,11 @@ public class MainActivity extends Activity {
             return;
         }
         Engine.Result after = Engine.compute(t, today);
+        // A card that changes place (done sinks, undo rises) slides there; «Έγιναν» fades in and out.
+        TransitionManager.beginDelayedTransition(list, new TransitionSet()
+                .addTransition(new ChangeBounds())
+                .addTransition(new Fade().addTarget("section:Έγιναν"))
+                .setDuration(320).setInterpolator(EASE));
         if (after.level > before.level) {
             animFrom.put(t.id, 0f);
             toast(this, "Level up! " + t.name + " Lv " + after.level);
