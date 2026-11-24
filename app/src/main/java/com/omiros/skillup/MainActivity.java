@@ -261,14 +261,16 @@ public class MainActivity extends Activity {
         }
         // One caption width for every card, so all XP bars end at the same x.
         int capW = (int) Math.ceil(captionWidth) + dp(this, 2); // slack against layout rounding; text is end-aligned
-        // What is still to do comes first; what is done (or barely) sinks to the bottom, under «Έγιναν».
+        // What is still to do comes first; what is done (or barely) and rest days sink to the bottom, under «Έγιναν».
         List<View> finished = new ArrayList<>();
         for (int i = 0; i < shown.size(); i++) {
             Engine.Task t = shown.get(i);
             if (t.avoid) continue;
             View card = taskCard(t, date, results.get(i), capW);
             Character m = t.marks.get(date);
-            if (m != null && (m == Engine.DONE || m == Engine.BARELY)) finished.add(card); else list.addView(card);
+            Engine.Sched s = t.sched(date);
+            boolean rest = !s.weekly() && !s.on(date);
+            if (rest || m != null && (m == Engine.DONE || m == Engine.BARELY)) finished.add(card); else list.addView(card);
         }
         boolean heading = false;
         for (int i = 0; i < shown.size(); i++) {

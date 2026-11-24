@@ -11,8 +11,8 @@ cd "$(dirname "$0")"
 : "${SKILLUP_KEYSTORE:?set SKILLUP_KEYSTORE to the signing key (.p12), kept outside this repository}"
 : "${SKILLUP_KEYSTORE_PASS:?set SKILLUP_KEYSTORE_PASS to its password}"
 
-VERSION_CODE=7
-VERSION_NAME=1.6
+VERSION_CODE=8
+VERSION_NAME=1.7
 MIN_SDK=26
 TARGET_SDK=34
 
