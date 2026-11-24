@@ -46,7 +46,8 @@ final class Ui {
     static final int ON_WINE = 0xFFF6CCD4;
     static final int ON_WINE_2 = 0xFFEBB3BE;
     static final int WINE_CAPTION = 0xFFD7A2AE;
-    static final int REST_SEL = 0xFF403B50;
+    /** A skip still to come (today, until midnight): WINE at half strength over the card. */
+    static final int WINE_PENDING = 0xFF42222D;
     // Year grid.
     static final int BARELY_DOT = 0xFF685E96;
     static final int SKIP_DOT = 0xFF8E3A4C;

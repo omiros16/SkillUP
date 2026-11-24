@@ -3,13 +3,18 @@ package com.omiros.skillup;
 import static com.omiros.skillup.Ui.*;
 
 import android.Manifest;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.TimePickerDialog;
 import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,7 +23,11 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.animation.LinearInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
@@ -40,6 +49,8 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final int REQ_EXPORT = 1, REQ_IMPORT = 2, REQ_NOTIF = 3;
+    /** Hold this long for Barely: long enough not to happen by accident, short enough not to feel like waiting. */
+    private static final int HOLD_MS = 500;
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("EEEE d MMMM", new Locale("el", "GR"));
 
     private List<Engine.Task> tasks;
@@ -348,136 +359,210 @@ public class MainActivity extends Activity {
         return h;
     }
 
-    /**
-     * Avoid task: [Το έκανα | Καθαρό]. A day is clean unless "Το έκανα" is marked; today stays
-     * "clean so far" (pending style, no XP yet) until midnight. Tapping "Το έκανα" again undoes it.
-     */
+    /** Avoid task: one button. A day is clean unless tapped («Το έκανα»); tapping again undoes it. */
     private View avoidControl(final Engine.Task t, final LocalDate date) {
         final boolean slipped = t.marks.containsKey(date) && t.marks.get(date) == Engine.SKIP;
-        boolean ended = date.isBefore(today), pending = !slipped && !ended;
-        LinearLayout segs = new LinearLayout(this);
-        segs.setMinimumHeight(dp(this, 56));
-        segs.setBaselineAligned(false);
-        segs.addView(segment("Το έκανα", "−" + Engine.AVOID_SLIP_XP, slipped, 0,
-                WINE, ON_WINE, ON_WINE_2, RIPPLE, new Runnable() {
+        boolean pending = !slipped && !date.isBefore(today); // today: clean so far, the +10 arrives at midnight
+        String sub = slipped ? "−" + Engine.AVOID_SLIP_XP + " XP"
+                : "+" + Engine.AVOID_CLEAN_XP + (pending ? " τα μεσάνυχτα" : " XP");
+        return stateButton(slipped ? "Το έκανα" : "Καθαρό", sub, slipped ? WINE : pending ? LAV_CONTAINER : LAVENDER,
+                slipped ? "Καθαρό" : "Το έκανα", new Runnable() {
                     @Override
                     public void run() {
                         mark(t, date, slipped ? null : Engine.SKIP);
                     }
-                }));
-        View clean = segment("Καθαρό", ended ? "+" + Engine.AVOID_CLEAN_XP : null, !slipped, 2,
-                pending ? LAV_CONTAINER : LAVENDER, pending ? ON_LAV_CONTAINER : ON_LAVENDER,
-                pending ? ON_LAV_CONTAINER_2 : ON_LAVENDER_2, pending ? RIPPLE : RIPPLE_ON_LAV, new Runnable() {
-                    @Override
-                    public void run() {
-                        if (slipped) mark(t, date, null); // already clean otherwise: nothing to change
-                    }
-                });
-        if (pending) {
-            // Clean so far: the +10 arrives at midnight.
-            TextView sub = text(this, 12, ON_LAV_CONTAINER_2, MED);
-            sub.setText("+" + Engine.AVOID_CLEAN_XP + " τα μεσάνυχτα");
-            tnum(sub);
-            sub.setGravity(Gravity.CENTER);
-            autosize(sub, 10, 12);
-            ((LinearLayout) clean).addView(sub, new LinearLayout.LayoutParams(-1, lineBox(this, 12)));
-            clean.setContentDescription("Καθαρό μέχρι τώρα, +" + Engine.AVOID_CLEAN_XP + " XP τα μεσάνυχτα");
-        }
-        segs.addView(clean);
-        LinearLayout box = column(this);
-        box.addView(segs, new LinearLayout.LayoutParams(-1, -2));
-        return box;
+                }, null, null);
     }
 
-    /** (Skip | Ξεκούραση | Όχι) / Barely / Done. Tapping the selected one clears it. */
+    /**
+     * One button: tap = Done, hold = Barely, the same again = undo. Unmarked, a scheduled day shows the skip it
+     * becomes at midnight; a rest day or a weekly task's free day shows how to mark it.
+     */
     private View statusControl(final Engine.Task t, final LocalDate date) {
         Engine.Sched s = t.sched(date);
         final Character m = t.marks.get(date);
-        final boolean weekly = s.weekly();
-        final boolean scheduled = !weekly && s.on(date);
-        boolean autoSkip = scheduled && m == null && date.isBefore(today);
-        // Weekly: only the week's best marks up to its quota earn XP; Engine works out whether this one would.
-        boolean doneEarns = scheduled || weekly && Engine.earns(t, date, Engine.DONE, today);
-        boolean barelyEarns = scheduled || weekly && Engine.earns(t, date, Engine.BARELY, today);
-
-        int sel = m == null ? (scheduled && !autoSkip ? -1 : 2)
-                : m == Engine.DONE ? 0 : m == Engine.BARELY ? 1 : 2;
-
-        LinearLayout box = column(this);
-        LinearLayout segs = new LinearLayout(this);
-        segs.setMinimumHeight(dp(this, 56));
-        segs.setBaselineAligned(false);
-        // Left to right: Skip (or Ξεκούραση / Όχι), Barely, Done.
-        String first = weekly ? (date.equals(today) ? "Όχι σήμερα" : "Όχι") : scheduled ? "Skip" : "Ξεκούραση";
-        segs.addView(segment(first, scheduled ? "−" + s.doneXp() : null, sel == 2, 0,
-                scheduled ? WINE : REST_SEL, scheduled ? ON_WINE : TEXT, scheduled ? ON_WINE_2 : TEXT2, RIPPLE,
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        // Skip toggles an explicit skip; the other two just clear the day.
-                        mark(t, date, scheduled && (m == null || m != Engine.SKIP) ? Engine.SKIP : null);
-                    }
-                }));
-        segs.addView(segment("Barely", barelyEarns ? "+" + s.barelyXp() : null, sel == 1, 1,
-                LAV_CONTAINER, ON_LAV_CONTAINER, ON_LAV_CONTAINER_2, RIPPLE, new Runnable() {
-                    @Override
-                    public void run() {
-                        mark(t, date, m != null && m == Engine.BARELY ? null : Engine.BARELY);
-                    }
-                }));
-        segs.addView(segment("Done", doneEarns ? "+" + s.doneXp() : null, sel == 0, 2,
-                LAVENDER, ON_LAVENDER, ON_LAVENDER_2, RIPPLE_ON_LAV, new Runnable() {
-                    @Override
-                    public void run() {
-                        mark(t, date, m != null && m == Engine.DONE ? null : Engine.DONE);
-                    }
-                }));
-        box.addView(segs, new LinearLayout.LayoutParams(-1, -2));
-        if (autoSkip) {
-            TextView note = text(this, 12, WINE_CAPTION, null);
-            note.setText("Μπήκε αυτόματα skip. Αλλάζει μέχρι το τέλος της ημέρας.");
-            lineHeight(note, 16);
-            note.setPadding(dp(this, 4), 0, 0, 0);
-            box.addView(note, topMargin(this, 8));
+        boolean scheduled = !s.weekly() && s.on(date), past = date.isBefore(today);
+        String label, sub;
+        int fill;
+        if (m != null && m == Engine.DONE) {
+            label = "Done";
+            fill = LAVENDER;
+            sub = earns(t, s, date, Engine.DONE, scheduled) ? "+" + s.doneXp() + " XP" : "χωρίς XP";
+        } else if (m != null && m == Engine.BARELY) {
+            label = "Barely";
+            fill = LAV_CONTAINER;
+            sub = earns(t, s, date, Engine.BARELY, scheduled) ? "+" + s.barelyXp() + " XP" : "χωρίς XP";
+        } else if (scheduled) {
+            boolean counted = past || m != null; // an explicit skip (made before 1.5) counts at once
+            label = "Skip";
+            fill = counted ? WINE : WINE_PENDING;
+            sub = "−" + s.doneXp() + (counted ? " XP" : " τα μεσάνυχτα");
+        } else {
+            label = s.weekly() ? (past ? "Όχι" : "Όχι σήμερα") : "Ξεκούραση";
+            fill = CTRL;
+            sub = "Πάτα για Done, κράτα για Barely";
         }
+        boolean done = m != null && m == Engine.DONE, barely = m != null && m == Engine.BARELY;
+        final Character onTap = done ? null : Engine.DONE, onHold = barely ? null : Engine.BARELY;
+        View b = stateButton(label, sub, fill, done ? "Αναίρεση" : "Done", new Runnable() {
+            @Override
+            public void run() {
+                mark(t, date, onTap);
+            }
+        }, barely ? "Αναίρεση" : "Barely", new Runnable() {
+            @Override
+            public void run() {
+                mark(t, date, onHold);
+            }
+        });
+        if (!(scheduled && m == null && past)) return b;
+        LinearLayout box = column(this);
+        box.addView(b);
+        TextView note = text(this, 12, WINE_CAPTION, null);
+        note.setText("Μπήκε αυτόματα skip. Αλλάζει μέχρι το τέλος της ημέρας.");
+        lineHeight(note, 16);
+        note.setPadding(dp(this, 4), 0, 0, 0);
+        box.addView(note, topMargin(this, 8));
         return box;
     }
 
-    /** position 0 / 1 / 2 in a connected group; selected = full pill. */
-    private View segment(String label, String xp, boolean selected, int position,
-                         int selFill, int selText, int selSub, int selRipple, final Runnable action) {
-        LinearLayout seg = column(this);
-        seg.setGravity(Gravity.CENTER);
-        seg.setPadding(dp(this, 8), dp(this, 6), dp(this, 8), dp(this, 6));
-        float[] corners = selected ? new float[]{28}
-                : position == 0 ? new float[]{28, 8, 8, 28} : position == 2 ? new float[]{8, 28, 28, 8} : new float[]{8};
-        seg.setBackground(press(this, selected ? selFill : CTRL, selected ? selRipple : RIPPLE, corners));
-        seg.setSelected(selected);
-        TextView l = text(this, 14, selected ? selText : TEXT, SEMI);
+    /** Daily scheduled days always earn; on weekly tasks only the week's best marks up to its quota do. */
+    private boolean earns(Engine.Task t, Engine.Sched s, LocalDate date, char mark, boolean scheduled) {
+        return scheduled || s.weekly() && Engine.earns(t, date, mark, today);
+    }
+
+    /**
+     * A full-width pill: the day's state on top, its XP below. Tap runs {@code tap}; holding runs {@code hold}
+     * (if any) while the pill fills from the left. Screen readers get the two as named actions.
+     */
+    private View stateButton(String label, String sub, int fill, final String tapName, final Runnable tap,
+                             final String holdName, final Runnable hold) {
+        LinearLayout b = column(this);
+        b.setGravity(Gravity.CENTER);
+        b.setMinimumHeight(dp(this, 56));
+        b.setPadding(dp(this, 16), dp(this, 6), dp(this, 16), dp(this, 6));
+        boolean light = fill == LAVENDER;
+        ClipDrawable progress = new ClipDrawable(shape(this, light ? 0x40000000 : 0x38FFFFFF, 28),
+                Gravity.START, ClipDrawable.HORIZONTAL);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(light ? RIPPLE_ON_LAV : RIPPLE),
+                new LayerDrawable(new Drawable[]{shape(this, fill, 28), progress}), shape(this, 0xFFFFFFFF, 28)));
+        int ink = light ? ON_LAVENDER : fill == LAV_CONTAINER ? ON_LAV_CONTAINER : fill == CTRL ? TEXT : ON_WINE;
+        int ink2 = light ? ON_LAVENDER_2 : fill == LAV_CONTAINER ? ON_LAV_CONTAINER_2 : fill == CTRL ? TEXT2 : ON_WINE_2;
+        TextView l = text(this, 15, ink, SEMI);
         l.setText(label);
         l.setGravity(Gravity.CENTER);
-        autosize(l, 11, 14);
-        seg.addView(l, new LinearLayout.LayoutParams(-1, lineBox(this, 14)));
-        if (xp != null) {
-            TextView x = text(this, 12, selected ? selSub : TEXT2, MED);
-            x.setText(xp + " XP");
-            x.setGravity(Gravity.CENTER);
-            tnum(x);
-            autosize(x, 10, 12);
-            seg.addView(x, new LinearLayout.LayoutParams(-1, lineBox(this, 12)));
-        }
-        seg.setContentDescription(label + (xp != null ? ", " + xp + " XP" : ""));
-        seg.setOnClickListener(new View.OnClickListener() {
+        autosize(l, 12, 15);
+        b.addView(l, new LinearLayout.LayoutParams(-1, lineBox(this, 15)));
+        TextView x = text(this, 12, ink2, MED);
+        x.setText(sub);
+        x.setGravity(Gravity.CENTER);
+        tnum(x);
+        autosize(x, 10, 12);
+        b.addView(x, new LinearLayout.LayoutParams(-1, lineBox(this, 12)));
+        b.setContentDescription(label + ", " + sub);
+        b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-                action.run();
+                tap.run();
             }
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
-        if (position > 0) lp.leftMargin = dp(this, 3);
-        seg.setLayoutParams(lp);
-        return seg;
+        if (hold != null) {
+            b.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    hold.run();
+                    return true; // the framework adds the long-press haptic
+                }
+            });
+            b.setOnTouchListener(new Hold(b, progress));
+        }
+        b.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override
+            public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, tapName));
+                if (hold != null) {
+                    info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
+                            AccessibilityNodeInfo.ACTION_LONG_CLICK, holdName));
+                }
+            }
+        });
+        b.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+        return b;
+    }
+
+    /**
+     * Press and hold: the pill fills from the left and, after HOLD_MS (or the phone's longer touch-and-hold
+     * setting), performs its long click; letting go earlier is a tap. Scrolling cancels it.
+     */
+    private static final class Hold implements View.OnTouchListener, Runnable {
+        private final View view;
+        private final ClipDrawable progress;
+        private final int ms, slop;
+        private ValueAnimator fill;
+        private boolean down, fired;
+
+        Hold(View view, ClipDrawable progress) {
+            this.view = view;
+            this.progress = progress;
+            ms = Math.max(HOLD_MS, ViewConfiguration.getLongPressTimeout());
+            slop = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
+        }
+
+        @Override
+        public void run() {
+            fired = true;
+            stop();
+            view.performLongClick();
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent e) {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    down = true;
+                    fired = false;
+                    v.drawableHotspotChanged(e.getX(), e.getY());
+                    v.setPressed(true);
+                    v.postDelayed(this, ms);
+                    fill = ValueAnimator.ofInt(0, 10000).setDuration(ms);
+                    fill.setInterpolator(new LinearInterpolator());
+                    fill.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                        @Override
+                        public void onAnimationUpdate(ValueAnimator a) {
+                            progress.setLevel((Integer) a.getAnimatedValue());
+                        }
+                    });
+                    fill.start();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (down && !inside(v, e)) stop();
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    boolean tap = down && !fired && inside(v, e);
+                    stop();
+                    if (tap) v.performClick();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    stop();
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private boolean inside(View v, MotionEvent e) {
+            return e.getX() >= -slop && e.getY() >= -slop && e.getX() < v.getWidth() + slop && e.getY() < v.getHeight() + slop;
+        }
+
+        private void stop() {
+            down = false;
+            view.removeCallbacks(this);
+            if (fill != null) fill.cancel();
+            progress.setLevel(0);
+            view.setPressed(false);
+        }
     }
 
     private View emptyState() {
@@ -537,7 +622,6 @@ public class MainActivity extends Activity {
         }
         Engine.Result before = Engine.compute(t, today);
         Character old = m == null ? t.marks.remove(date) : t.marks.put(date, m);
-        if (old == null && m == null) return; // nothing to clear, so nothing to write
         if (!Store.save(this, tasks)) {
             if (old == null) t.marks.remove(date); else t.marks.put(date, old);
             toast(this, "Δεν αποθηκεύτηκε. Έλεγξε τον ελεύθερο χώρο του κινητού.");
